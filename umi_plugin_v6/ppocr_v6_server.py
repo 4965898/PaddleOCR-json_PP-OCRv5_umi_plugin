@@ -57,13 +57,29 @@ def _select_engine(use_gpu, cpu_threads=None):
         return None, None
     providers = ort.get_available_providers()
     if use_gpu and "CUDAExecutionProvider" in providers:
-        cfg = {"device_type": "gpu", "providers": ["CUDAExecutionProvider", "CPUExecutionProvider"]}
+        # GPU 模式
+        # arena_extend_strategy=kSameAsRequested：按实际需求分配显存，避免默认
+        #   kNextPowerOfTwo 按2的幂分配导致显存碎片化（多页PDF第2页起报 bad allocation）
+        # enable_mem_pattern=False：避免不同页 batch size 变化导致内存模式不匹配
+        cfg = {
+            "device_type": "gpu",
+            "providers": ["CUDAExecutionProvider", "CPUExecutionProvider"],
+            "provider_options": [
+                {"device_id": 0, "arena_extend_strategy": "kSameAsRequested"},
+                {},
+            ],
+            "graph_optimization_level": 99,  # ORT_ENABLE_ALL
+            "enable_mem_pattern": False,
+        }
     else:
-        cfg = {"device_type": "cpu", "providers": ["CPUExecutionProvider"]}
-    # 性能优化：图优化最高级 + 内存模式（CPU 推理稳定提速，无副作用）
-    cfg["graph_optimization_level"] = 99  # ORT_ENABLE_ALL
-    cfg["enable_mem_pattern"] = True
-    cfg["enable_cpu_mem_arena"] = True
+        # CPU 模式：图优化最高级 + 内存模式（CPU 推理稳定提速，无副作用）
+        cfg = {
+            "device_type": "cpu",
+            "providers": ["CPUExecutionProvider"],
+            "graph_optimization_level": 99,  # ORT_ENABLE_ALL
+            "enable_mem_pattern": True,
+            "enable_cpu_mem_arena": True,
+        }
     # CPU 线程数：显式设置时生效，否则用 onnxruntime 默认（全部逻辑核）
     if cpu_threads and cpu_threads > 0:
         cfg["intra_op_num_threads"] = cpu_threads
