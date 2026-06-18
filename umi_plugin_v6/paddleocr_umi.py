@@ -17,6 +17,7 @@ ExeConfigs = [
     ("cls", "cls"),
     ("rec_batch_num", "rec_batch_num"),
     ("limit_side_len", "limit_side_len"),
+    ("use_gpu", "use_gpu"),
 ]
 
 

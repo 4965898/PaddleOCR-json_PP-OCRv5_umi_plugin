@@ -49,7 +49,7 @@ localOptions = {
         "default": 6,
         "min": 1,
         "isInt": True,
-        "toolTip": tr("识别模型批处理大小。增大可提高吞吐量，但会增加内存/显存占用。"),
+        "toolTip": tr("识别模型批处理大小。medium 模型建议保持默认 6（CPU 下调大可能因缓存失效变慢）；small 模型可调大到 16-32 提速。GPU 模式下调大可提高吞吐量。"),
     },
     "vertical_text": {
         "title": tr("竖排文字模式"),
@@ -73,5 +73,10 @@ localOptions = {
         "min": 32,
         "isInt": True,
         "toolTip": tr('当"限制图像边长"选择"自定义"时生效。建议填写32或48的公倍数。'),
+    },
+    "use_gpu": {
+        "title": tr("启用GPU加速"),
+        "default": False,
+        "toolTip": tr("启用 NVIDIA GPU 加速（需先运行 install_gpu.bat 安装 GPU 组件）。GPU 模式比 CPU 快约 17 倍。无 GPU 或未安装组件时自动降级到 CPU。"),
     },
 }

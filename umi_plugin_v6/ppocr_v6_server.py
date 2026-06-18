@@ -227,7 +227,7 @@ def main():
     parser.add_argument("--cls", type=lambda x: x.lower() == "true" if isinstance(x, str) else bool(x), default=None)
     parser.add_argument("--rec_batch_num", type=int, default=None)
     parser.add_argument("--limit_side_len", type=int, default=None)
-    parser.add_argument("--use_gpu", action="store_true", default=False)
+    parser.add_argument("--use_gpu", type=lambda x: x.lower() == "true" if isinstance(x, str) else bool(x), default=False)
     parser.add_argument("--enable_mkldnn", default=None)
     parser.add_argument("--cpu_threads", type=int, default=None)
     parser.add_argument("--use_tensorrt", default=None)
