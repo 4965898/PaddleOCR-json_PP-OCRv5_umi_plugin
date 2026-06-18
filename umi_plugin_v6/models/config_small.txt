@@ -1,0 +1,4 @@
+# PP-OCRv6 快速（small）
+# PP-OCRv6 识别模型为多语言模型，可识别中英日韩等，无需按语言切换
+model_size small
+lang ch

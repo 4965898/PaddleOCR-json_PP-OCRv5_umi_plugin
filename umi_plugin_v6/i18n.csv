@@ -1,0 +1,25 @@
+key,en_US,zh_TW,ja_JP
+PaddleOCR（PP-OCRv6）,PaddleOCR (PP-OCRv6),PaddleOCR（PP-OCRv6）,PaddleOCR（PP-OCRv6）
+内存占用限制,Memory usage limit,記憶體佔用限制,メモリ使用量の制限
+值>0时启用。引擎内存占用超过该值时，执行内存清理。,"Enable when the value is greater than 0. When the memory usage of the engine exceeds this value, memory cleanup will be performed.",值>0時啟用。 引擎記憶體佔用超過該值時，執行記憶體清理。,値>0の場合に有効になります。エンジンメモリがこの値を超えて占有されている場合は、メモリクリーンアップを実行します。
+内存闲时清理,Memory cleanup during idle time,記憶體閑時清理,メモリアイドル時のクリーンアップ
+秒,seconds,秒,秒
+值>0时启用。引擎空闲时间超过该值时，执行内存清理。,"Enable when the value is greater than 0. When the idle time of the engine exceeds this value, memory cleanup will be performed.",值>0時啟用。 引擎空閒時間超過該值時，執行記憶體清理。,値>0の場合に有効になります。エンジンアイドル時間がこの値を超えると、メモリクリーンアップを実行されます。
+模型尺寸,Model size,模型尺寸,モデルサイズ
+PP-OCRv6 识别模型为多语言模型，可识别中英日韩等，无需按语言切换。medium 精度高，small 速度快。首次使用时自动下载对应模型到插件目录。,"PP-OCRv6 recognition model is multilingual (Chinese/English/Japanese/Korean etc.), no need to switch by language. medium = higher accuracy, small = faster. Models are auto-downloaded to the plugin directory on first use.",PP-OCRv6 識別模型為多語言模型，可識別中英日韓等，無需按語言切換。medium 精度高，small 速度快。首次使用時自動下載對應模型到插件目錄。,PP-OCRv6認識モデルは多言語モデルで、中英日韓などを認識でき、言語切替不要。medium=高精度、small=高速。初回使用時にモデルがプラグインディレクトリに自動ダウンロードされます。
+PaddleOCR PP-OCRv6,PaddleOCR PP-OCRv6,PaddleOCR PP-OCRv6,PaddleOCR PP-OCRv6
+启用文本检测,Enable text detection,啟用文本檢測,テキスト検出を有効にする
+启用det目标检测。若图片中只含一行文本且无空白区域，可关闭det以加快速度。,Enable det object detection. If the image contains only one line of text with no blank areas, you can disable det to speed up recognition.,啟用det目標檢測。若圖片中只含一行文本且無空白區域，可關閉det以加快速度。,det目標検出を有効にする。画像に1行のテキストしかなく、空白領域がない場合、detを無効にして速度を向上させることができます。
+纠正文本方向,Text direction correction,糾正文字方向,テキスト方向の修正
+启用方向分类，识别倾斜或倒置的文本。可能降低识别速度。,Enable direction classification to recognize slanted or inverted text. This may reduce recognition speed.,啟用方向分類，識別傾斜或倒置的文字。 可能降低識別速度。,方向分類を有効にして、傾斜または反転したテキストを識別します。認識速度が低下する可能性があります。
+识别批处理数,Recognition batch size,識別批處理數,認識バッチサイズ
+识别模型批处理大小。增大可提高吞吐量，但会增加内存/显存占用。,Recognition model batch size. Increasing it can improve throughput but will increase memory/VRAM usage.,識別模型批處理大小。增大可提高吞吐量，但會增加記憶體/顯存佔用。,認識モデルのバッチサイズ。増やすことでスループットを向上できますが、メモリ/VRAM使用量が増加します。
+限制图像边长,Limit image edge length,限制影像邊長,画像の辺の長さを制限する
+（默认）,(Default),（默認）,(デフォルト)
+无限制,Unlimited,無限制,制限なし
+自定义,Custom,自定義,カスタム
+自定义图像边长,Custom image edge length,自定義影像邊長,カスタム画像辺長
+当"限制图像边长"选择"自定义"时生效。建议填写32或48的公倍数。,"Effective when 'Limit image edge length' is set to 'Custom'. It is recommended to use a common multiple of 32 or 48.",當「限制影像邊長」選擇「自定義」時生效。建議填寫32或48的公倍數。,「画像の辺の長さを制限」が「カスタム」の場合に有効です。32または48の公倍数を推奨します。
+将边长大于该值的图片进行压缩，可以提高识别速度。可能降低识别精度。,Compress images with edge length greater than this value to improve recognition speed. This may reduce recognition accuracy.,將邊長大於該值的圖片進行壓縮，可以提高識別速度。 可能降低識別精度。,辺の長さがこの値より大きい画像を圧縮することで、認識速度を高めることができます。認識精度が低下する可能性があります。
+竖排文字模式,Vertical text mode,豎排文字模式,縦書きモード
+启用后，识别结果将按竖排阅读顺序重排：从右到左逐列，每列从上到下。适用于竖排繁体中文等场景。,"When enabled, recognition results will be reordered in vertical reading order: right-to-left by column, top-to-bottom within each column. Suitable for vertical traditional Chinese, etc.","啟用後，識別結果將按豎排閱讀順序重排：從右到左逐列，每列從上到下。適用於豎排繁體中文等場景。",有効にすると、認識結果が縦書きの読み順に再配置されます：右から左へ列ごと、各列は上から下へ。縦書き繁体字中国語などに適しています。

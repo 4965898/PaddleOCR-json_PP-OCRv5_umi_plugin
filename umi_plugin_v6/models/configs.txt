@@ -1,0 +1,2 @@
+config_medium.txt 高精度（medium）
+config_small.txt 快速（small）
