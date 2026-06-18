@@ -27,6 +27,22 @@ _recognizer = None  # TextRecognition 实例（det=False）
 _det = True
 
 
+def _setup_nvidia_dlls():
+    """把 pip 安装的 nvidia CUDA/cuDNN DLL 路径加入搜索路径（GPU 加速所需）"""
+    try:
+        import sysconfig
+        site_dir = sysconfig.get_paths()["purelib"]
+        nvidia_base = os.path.join(site_dir, "nvidia")
+        if os.path.isdir(nvidia_base):
+            for sub in os.listdir(nvidia_base):
+                dll_dir = os.path.join(nvidia_base, sub, "bin")
+                if os.path.isdir(dll_dir):
+                    os.add_dll_directory(dll_dir)
+                    os.environ["PATH"] = dll_dir + os.pathsep + os.environ.get("PATH", "")
+    except Exception:
+        pass
+
+
 def _select_engine(use_gpu, cpu_threads=None):
     """自动选择推理引擎。优先 onnxruntime（轻量），未安装则回退 paddle。
 
@@ -34,6 +50,7 @@ def _select_engine(use_gpu, cpu_threads=None):
     onnxruntime CPU 使用自带的 MLAS 优化库；这里通过开启图优化最高级、内存模式
     与显式线程数来提升 CPU 推理速度（无需下载任何额外文件）。
     """
+    _setup_nvidia_dlls()
     try:
         import onnxruntime as ort
     except ImportError:

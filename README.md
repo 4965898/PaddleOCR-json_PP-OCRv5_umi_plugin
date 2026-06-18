@@ -58,11 +58,20 @@ Umi-OCR/
 
 安装约需 1-3 分钟（取决于网速）。
 
-> **GPU 加速**（可选）：如需 GPU 加速，安装完成后额外运行：
-> ```
-> ppocr_v6_env\Scripts\pip install onnxruntime-gpu
-> ```
-> 需要 CUDA 12 + cuDNN 9 运行库。无 GPU 或缺少运行库时会自动降级到 CPU。
+> **GPU 加速**（可选，推荐 NVIDIA 显卡用户使用）：
+>
+> 如需 GPU 加速，双击运行 `install_gpu.bat`，脚本会自动安装 `onnxruntime-gpu` + CUDA Runtime + cuDNN（约 1.6GB），无需手动下载任何文件。
+>
+> 安装完成后，在 Umi-OCR 插件设置中勾选「启用GPU」即可。
+>
+> **性能对比**（RTX 3070 Ti Laptop，medium 模型，4 行中文）：
+>
+> | 模式 | 平均识别耗时 | 加速比 |
+> |------|-------------|--------|
+> | CPU | 9.5s | 1x |
+> | GPU | 0.55s | **17x** |
+>
+> 首次识别会稍慢（GPU 内核初始化），后续识别速度大幅提升。无 GPU 或缺少运行库时会自动降级到 CPU。
 
 ### 第 3 步：重启 Umi-OCR
 
@@ -152,7 +161,7 @@ A: 首次使用时需要下载模型（约 10-50MB），下载后缓存到本地
 A: 本插件已修复 Windows 下中文乱码问题（server 强制 UTF-8 编码）。如仍出现乱码，请确认使用的是最新版 `ppocr_v6_server.py`。
 
 ### Q: GPU 不生效？
-A: ONNX Runtime GPU 需要 CUDA 12 + cuDNN 9 运行库。未安装时会自动降级到 CPU。CPU 模式下对截图文字识别已足够快。
+A: 运行 `install_gpu.bat` 一键安装 GPU 所需组件（onnxruntime-gpu + CUDA Runtime + cuDNN）。安装后 onnxruntime 会自动加载 CUDA provider。如仍不生效，检查显卡驱动是否为最新版本。无 GPU 时会自动降级到 CPU。
 
 ### Q: 如何切换模型尺寸？
 A: 在 Umi-OCR 的插件设置中切换「模型尺寸」。切换后会重新加载引擎，首次使用新尺寸时需下载对应模型。
