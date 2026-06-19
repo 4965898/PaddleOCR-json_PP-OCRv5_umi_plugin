@@ -259,7 +259,7 @@ def run_ocr(cmd):
     except Exception as e:
         msg = str(e)
         if "bad allocation" in msg.lower() or "out of memory" in msg.lower():
-            return {"code": 902, "data": f"GPU 显存不足（bad allocation）。请降低"识别批处理数"后重试。"}
+            return {"code": 902, "data": "GPU 显存不足（bad allocation）。请降低'识别批处理数'后重试。"}
         return {"code": 902, "data": f"OCR 异常: {e}"}
     finally:
         _cleanup_gpu_memory()
