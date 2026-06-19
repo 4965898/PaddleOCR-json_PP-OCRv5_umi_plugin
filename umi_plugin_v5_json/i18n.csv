@@ -23,7 +23,7 @@ CPU推理线程数。不要盲目拉满，建议8~16间测试最优值。,CPU in
 无限制,Unlimited,無限制,制限なし
 自定义,Custom,自定義,カスタム
 自定义图像边长,Custom image edge length,自定義影像邊長,カスタム画像辺長
-当"限制图像边长"选择"自定义"时生效。建议填写32或48的公倍数。,"Effective when 'Limit image edge length' is set to 'Custom'. It is recommended to use a common multiple of 32 or 48.",當「限制影像邊長」選擇「自定義」時生效。建議填寫32或48的公倍數。,「画像の辺の長さを制限」が「カスタム」の場合に有効です。32または48の公倍数を推奨します。
+当"限制图像边长"选择"自定义"时生效。建议填写32或48的公倍数。,"Effective when 'Limit image edge length' is set to 'Custom'. It is recommended to use a common multiple of 32 or 48.",當「限制影像邊長」選擇「自定義」時生效。建議填寫32或48の公倍数を推奨します。
 将边长大于该值的图片进行压缩，可以提高识别速度。可能降低识别精度。,Compress images with edge length greater than this value to improve recognition speed. This may reduce recognition accuracy.,將邊長大於該值的圖片進行壓縮，可以提高識別速度。 可能降低識別精度。,辺の長さがこの値より大きい画像を圧縮することで、認識速度を高めることができます。認識精度が低下する可能性があります。
 推理设备模式,Inference Device Mode,推理設備模式,推論デバイスモード
 仅CPU,CPU Only,僅CPU,CPUのみ
@@ -32,7 +32,7 @@ CPU+GPU混合（推荐）,CPU+GPU Hybrid (Recommended),CPU+GPU混合（推薦）
 混合模式会优先尝试GPU，若启动失败则自动回退CPU，兼顾速度与稳定性。仅GPU模式需要GPU版构建的PaddleOCR-json.exe。,"Hybrid mode tries GPU first and automatically falls back to CPU if GPU initialization fails, balancing speed and stability. GPU-only mode requires a GPU-built PaddleOCR-json.exe.",混合模式會優先嘗試GPU，若啟動失敗則自動回退CPU，兼顧速度與穩定性。僅GPU模式需要GPU版構建的PaddleOCR-json.exe。,ハイブリッドモードはまずGPUを試し、初期化に失敗した場合は自動でCPUへフォールバックし、速度と安定性を両立します。GPUのみモードにはGPU版ビルドのPaddleOCR-json.exeが必要です。
 GPU编号,GPU ID,GPU編號,GPU ID
 启用TensorRT加速,Enable TensorRT acceleration,啟用TensorRT加速,TensorRT加速を有効にする
-使用TensorRT加速GPU推理，可显著提升GPU推理速度。需要GPU版构建的PaddleOCR-json.exe及TensorRT环境。,"Use TensorRT to accelerate GPU inference, significantly improving GPU inference speed. Requires a GPU-built PaddleOCR-json.exe and TensorRT environment.",使用TensorRT加速GPU推理，可顯著提升GPU推理速度。需要GPU版構建的PaddleOCR-json.exe及TensorRT環境。,TensorRTを使用してGPU推論を加速し、GPU推論速度を大幅に向上させます。GPU版ビルドのPaddleOCR-json.exeとTensorRT環境が必要です。
+使用TensorRT加速GPU推理，可显著提升GPU推理速度。需要GPU版构建的PaddleOCR-json.exe及TensorRT环境。,"Use TensorRT to accelerate GPU inference, significantly improving GPU inference speed. Requires a GPU-built PaddleOCR-json.exe and TensorRT environment.",使用TensorRT加速GPU推理，可显著提升GPU推理速度。需要GPU版構建的PaddleOCR-json.exe及TensorRT環境。,TensorRTを使用してGPU推論を加速し、GPU推論速度を大幅に向上させます。GPU版ビルドのPaddleOCR-json.exeとTensorRT環境が必要です。
 推理精度,Inference Precision,推理精度,推論精度
 FP32（默认）,FP32 (Default),FP32（默認）,FP32（デフォルト）
 FP16（更快）,FP16 (Faster),FP16（更快）,FP16（高速）

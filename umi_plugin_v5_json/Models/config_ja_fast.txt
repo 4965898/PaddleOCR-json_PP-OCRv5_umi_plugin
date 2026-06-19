@@ -1,4 +1,4 @@
-# PP-OCR v5 繁體中文（快速 - mobile rec）
+# PP-OCR v5 日本語（高速 - mobile rec）
 
 det_model_dir models/PP-OCRv5_mobile_det_infer
 cls_model_dir models/PP-LCNet_x0_25_textline_ori_infer
