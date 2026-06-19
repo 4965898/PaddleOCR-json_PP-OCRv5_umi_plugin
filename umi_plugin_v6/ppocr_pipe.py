@@ -1,6 +1,7 @@
 import os
 import atexit
 import subprocess
+import threading
 from json import loads as jsonLoads, dumps as jsonDumps
 from sys import platform as sysPlatform
 from base64 import b64encode
@@ -20,6 +21,7 @@ class PPOCR_pipe:
                 else:
                     cmds += [f"--{key}", str(value)]
         self.ret = None
+        self._stderr_lines = []
         startupinfo = None
         if "win32" in str(sysPlatform).lower():
             startupinfo = subprocess.STARTUPINFO()
@@ -32,22 +34,38 @@ class PPOCR_pipe:
             cwd=cwd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             startupinfo=startupinfo,
         )
+        # 守护线程持续读取 stderr，防止缓冲区满阻塞子进程，并保留最近日志便于排错
+        self._stderr_thread = threading.Thread(target=self._drain_stderr, daemon=True)
+        self._stderr_thread.start()
         while True:
             if not self.ret.poll() == None:
-                raise Exception(f"OCR init fail.")
+                self._stderr_thread.join(timeout=1.0)
+                err_msg = "".join(self._stderr_lines).strip()
+                raise Exception(f"OCR init fail. stderr: {err_msg}")
             initStr = self.ret.stdout.readline().decode("utf-8", errors="ignore")
             if "OCR init completed." in initStr:
                 break
         atexit.register(self.exit)
 
+    def _drain_stderr(self):
+        """持续读取子进程 stderr，防止缓冲区满导致子进程阻塞"""
+        try:
+            for line in iter(self.ret.stderr.readline, b""):
+                self._stderr_lines.append(line.decode("utf-8", errors="ignore"))
+                if len(self._stderr_lines) > 50:
+                    self._stderr_lines.pop(0)
+        except Exception:
+            pass
+
     def runDict(self, writeDict: dict):
         if not self.ret:
             return {"code": 901, "data": f"引擎实例不存在。"}
         if not self.ret.poll() == None:
-            return {"code": 902, "data": f"子进程已崩溃。"}
+            err_msg = "".join(self._stderr_lines).strip()
+            return {"code": 902, "data": f"子进程已崩溃。stderr: {err_msg}"}
         writeStr = jsonDumps(writeDict, ensure_ascii=True, indent=None) + "\n"
         try:
             self.ret.stdin.write(writeStr.encode("utf-8"))

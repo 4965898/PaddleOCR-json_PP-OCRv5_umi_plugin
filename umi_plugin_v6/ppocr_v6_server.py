@@ -51,13 +51,10 @@ def _cleanup_gpu_memory():
     """释放 GPU 显存缓存，防止多页 PDF 识别时显存碎片累积导致 bad allocation"""
     if not _use_gpu:
         return
+    # ONNX Runtime session 由 Python 引用计数管理，gc.collect() 会回收无引用的
+    # session 及其显存。不要尝试手动调用 session.run_options.free()——RunOptions
+    # 没有公开的 free() 方法，调用会抛 AttributeError 被静默吞掉，实际无效。
     gc.collect()
-    try:
-        import onnxruntime as ort
-        for sess in ort.get_all_sessions():
-            sess.run_options.free()
-    except Exception:
-        pass
     try:
         import torch
         if torch.cuda.is_available():
@@ -205,6 +202,7 @@ def run_ocr(cmd):
     global _ocr, _recognizer
     if _ocr is None and _recognizer is None:
         return {"code": 901, "data": "引擎未初始化"}
+    tmp_path = None
     try:
         if "image_path" in cmd:
             input_data = cmd["image_path"]
@@ -214,6 +212,7 @@ def run_ocr(cmd):
             tmp.write(img_bytes)
             tmp.close()
             input_data = tmp.name
+            tmp_path = tmp.name
         else:
             return {"code": 403, "data": "No valid tasks."}
 
@@ -221,12 +220,6 @@ def run_ocr(cmd):
             result = list(_ocr.predict(input_data))
         else:
             result = list(_recognizer.predict(input_data))
-
-        if "image_base64" in cmd:
-            try:
-                os.unlink(tmp.name)
-            except:
-                pass
 
         # 解析结果，兼容 det（复数字段）与 rec-only（单数字段）两种输出
         data_list = []
@@ -265,6 +258,12 @@ def run_ocr(cmd):
             return {"code": 902, "data": "GPU 显存不足（bad allocation）。请降低'识别批处理数'后重试。"}
         return {"code": 902, "data": f"OCR 异常: {e}"}
     finally:
+        # 无论成功还是异常，都清理 base64 临时文件，避免泄漏到 %TEMP%
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
         _cleanup_gpu_memory()
 
 
