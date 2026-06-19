@@ -173,7 +173,10 @@ def init_ocr(args):
             "text_recognition_batch_size": rec_batch_num,
         }
         if use_local:
+            # 本地目录 + 模型名都要传，否则 paddlex 默认用 medium，与 small 目录不匹配
+            ocr_args["text_detection_model_name"] = det_model
             ocr_args["text_detection_model_dir"] = det_onnx_dir
+            ocr_args["text_recognition_model_name"] = rec_model
             ocr_args["text_recognition_model_dir"] = rec_onnx_dir
         else:
             ocr_args["text_detection_model_name"] = det_model
