@@ -49,7 +49,7 @@ localOptions = {
         "default": 6,
         "min": 1,
         "isInt": True,
-        "toolTip": tr("识别模型批处理大小。medium 模型建议保持默认 6（CPU 下调大可能因缓存失效变慢）；small 模型可调大到 16-32 提速。GPU 模式下调大可提高吞吐量。"),
+        "toolTip": tr("识别模型批处理大小。CPU 下：medium 建议保持默认 6（调大可能变慢），small 可调大到 16-32。GPU 下：可大幅调高以提升速度，但受显存限制，爆显存时报错请调小此值。"),
     },
     "vertical_text": {
         "title": tr("竖排文字模式"),

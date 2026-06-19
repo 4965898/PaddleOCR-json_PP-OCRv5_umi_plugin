@@ -9,6 +9,7 @@ import json
 import argparse
 import base64
 import tempfile
+import gc
 
 # 强制 stdin/stdout 使用 UTF-8 编码，避免 Windows 下中文乱码
 sys.stdout.reconfigure(encoding="utf-8")
@@ -39,6 +40,28 @@ def _setup_nvidia_dlls():
                 if os.path.isdir(dll_dir):
                     os.add_dll_directory(dll_dir)
                     os.environ["PATH"] = dll_dir + os.pathsep + os.environ.get("PATH", "")
+    except Exception:
+        pass
+
+
+_use_gpu = False
+
+
+def _cleanup_gpu_memory():
+    """释放 GPU 显存缓存，防止多页 PDF 识别时显存碎片累积导致 bad allocation"""
+    if not _use_gpu:
+        return
+    gc.collect()
+    try:
+        import onnxruntime as ort
+        for sess in ort.get_all_sessions():
+            sess.run_options.free()
+    except Exception:
+        pass
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
     except Exception:
         pass
 
@@ -109,7 +132,7 @@ def parse_config(args):
 
 
 def init_ocr(args):
-    global _ocr, _recognizer, _det
+    global _ocr, _recognizer, _det, _use_gpu
     from paddleocr import PaddleOCR, TextRecognition
 
     config = parse_config(args)
@@ -120,6 +143,7 @@ def init_ocr(args):
     rec_batch_num = args.rec_batch_num or 6
     limit_side_len = args.limit_side_len or 960
     use_gpu = bool(args.use_gpu)
+    _use_gpu = use_gpu
 
     det_model = f"PP-OCRv6_{model_size}_det"
     rec_model = f"PP-OCRv6_{model_size}_rec"
@@ -233,7 +257,12 @@ def run_ocr(cmd):
             return {"code": 101, "data": f'No text found in image. Path:"{input_data}"'}
         return {"code": 100, "data": data_list}
     except Exception as e:
+        msg = str(e)
+        if "bad allocation" in msg.lower() or "out of memory" in msg.lower():
+            return {"code": 902, "data": f"GPU 显存不足（bad allocation）。请降低"识别批处理数"后重试。"}
         return {"code": 902, "data": f"OCR 异常: {e}"}
+    finally:
+        _cleanup_gpu_memory()
 
 
 def main():

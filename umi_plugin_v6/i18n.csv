@@ -13,7 +13,7 @@ PaddleOCR PP-OCRv6,PaddleOCR PP-OCRv6,PaddleOCR PP-OCRv6,PaddleOCR PP-OCRv6
 纠正文本方向,Text direction correction,糾正文字方向,テキスト方向の修正
 启用方向分类，识别倾斜或倒置的文本。可能降低识别速度。,Enable direction classification to recognize slanted or inverted text. This may reduce recognition speed.,啟用方向分類，識別傾斜或倒置的文字。 可能降低識別速度。,方向分類を有効にして、傾斜または反転したテキストを識別します。認識速度が低下する可能性があります。
 识别批处理数,Recognition batch size,識別批處理數,認識バッチサイズ
-识别模型批处理大小。medium 模型建议保持默认 6（CPU 下调大可能因缓存失效变慢）；small 模型可调大到 16-32 提速。GPU 模式下调大可提高吞吐量。,"Recognition model batch size. For medium model, keep default 6 (larger values may slow down due to cache misses on CPU); for small model, increase to 16-32 for speed. Larger values improve throughput on GPU.",識別模型批處理大小。medium 模型建議保持默認 6（CPU 下調大可能因緩存失效變慢）；small 模型可調大到 16-32 提速。GPU 模式下調大可提高吞吐量。,認識モデルのバッチサイズ。mediumモデルはデフォルト6を推奨（CPUで大きくするとキャッシュミスで遅くなる可能性）；smallモデルは16-32に増やして高速化。GPUモードでは大きくするとスループットが向上。
+识别模型批处理大小。CPU 下：medium 建议保持默认 6（调大可能变慢），small 可调大到 16-32。GPU 下：可大幅调高以提升速度，但受显存限制，爆显存时报错请调小此值。,"Recognition model batch size. CPU: medium keep default 6 (larger may slow down), small can go up to 16-32. GPU: increase for speed, but limited by VRAM — reduce if OOM error.",識別模型批處理大小。CPU 下：medium 建議保持默認 6（調大可能變慢），small 可調大到 16-32。GPU 下：可大幅調高以提升速度，但受顯存限制，爆顯存時報錯請調小此値。,認識モデルのバッチサイズ。CPU：mediumはデフォルト6を推奨（大きくすると遅くなる可能性）、smallは16-32まで増加可能。GPU：大きくすると速度向上、ただしVRAM制限あり、OOMエラー時は値を下げてください。
 限制图像边长,Limit image edge length,限制影像邊長,画像の辺の長さを制限する
 （默认）,(Default),（默認）,(デフォルト)
 无限制,Unlimited,無限制,制限なし
