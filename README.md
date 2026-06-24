@@ -1,4 +1,4 @@
-# PaddleOCR PP-OCR Umi-OCR 插件
+#  Umi-OCR PaddleOCR插件
 
 本仓库包含两个版本的 Umi-OCR PaddleOCR 插件：
 
