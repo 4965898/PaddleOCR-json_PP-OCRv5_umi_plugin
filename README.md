@@ -1,4 +1,4 @@
-# Umi-OCR PaddleOCR插件（v1.1）
+# UmiOCR PP-OCRv6 ONNX Plugin（v1.1）
 
 本仓库包含两个版本的 Umi-OCR PaddleOCR 插件：
 
