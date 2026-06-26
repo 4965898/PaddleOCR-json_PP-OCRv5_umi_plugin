@@ -1,4 +1,4 @@
-#  Umi-OCR PaddleOCR插件
+# Umi-OCR PaddleOCR插件（v1.1）
 
 本仓库包含两个版本的 Umi-OCR PaddleOCR 插件：
 
@@ -263,6 +263,33 @@ git clone https://github.com/OneDongua/PaddleOCR-json_PP-OCRv5_umi_plugin.git
 - 仅在确有旋转文本时开启 `纠正文本方向`，否则保持关闭以减少额外开销。
 - 单行文本可关闭 `启用文本检测` 以跳过检测阶段，显著加速。
 - 长时间批量识别时，按机器内存情况设置 `内存占用限制` 和 `内存闲时清理`，减少内存膨胀引起的性能抖动。
+
+---
+
+## 更新日志
+
+### v1.1（2026-06-20）
+
+**GPU cuDNN 加载修复**：
+- 修复 GPU 模式下 `Invalid handle. Cannot load symbol cudnnCreate` 错误
+- 根因：`from paddleocr import` 在 `_setup_nvidia_dlls()` 之前执行，paddleocr 导入过程干扰了后续 ORT CUDA 加载 cuDNN
+- 修复：在 `import paddleocr` 之前先调用 `_setup_nvidia_dlls()` 添加 NVIDIA DLL 路径
+
+**GPU 显存优化**：
+- 新增 `cudnn_conv_algo_search=HEURISTIC`：避免默认 EXHAUSTIVE 策略搜索所有卷积算法时分配大量临时 workspace，减少约 1-2G 空闲显存占用
+- 新增 `cudnn_conv_use_max_workspace=False`：不预分配最大 workspace，进一步减少显存
+- 速度损失极小（卷积算法差异通常在 5% 以内）
+
+### v1.0
+
+- 基于 PaddleOCR 3.7.0 + ONNX Runtime 的 PP-OCRv6 插件初始版本
+- 修复 GPU 多页 PDF `bad allocation`（arena_extend_strategy=kSameAsRequested + 每页显存清理）
+- 修复 small 模型 `Model name mismatch`（use_local 时同时传 model_name 和 model_dir）
+- 修复 stderr 被丢弃导致初始化错误不可见（DEVNULL → PIPE + 守护线程）
+- 修复 base64 临时文件异常路径泄漏（清理移到 finally 块）
+- 删除无效的 `sess.run_options.free()` 清理代码（RunOptions 无 free() 方法）
+- 修复 bat 文件 LF/CRLF 编码问题（改为 CRLF + 无 BOM + 纯 ASCII）
+- 将 v5 代码整理到 `umi_plugin_v5_json/` 子文件夹
 
 ---
 

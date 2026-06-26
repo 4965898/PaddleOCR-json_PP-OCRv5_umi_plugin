@@ -81,11 +81,19 @@ def _select_engine(use_gpu, cpu_threads=None):
         # arena_extend_strategy=kSameAsRequested：按实际需求分配显存，避免默认
         #   kNextPowerOfTwo 按2的幂分配导致显存碎片化（多页PDF第2页起报 bad allocation）
         # enable_mem_pattern=False：避免不同页 batch size 变化导致内存模式不匹配
+        # cudnn_conv_algo_search=HEURISTIC：用启发式选择卷积算法，避免默认EXHAUSTIVE
+        #   搜索所有算法时分配大量临时workspace（可减少1-2G空闲显存占用）
+        # cudnn_conv_use_max_workspace=False：不预分配最大workspace，进一步减少显存
         cfg = {
             "device_type": "gpu",
             "providers": ["CUDAExecutionProvider", "CPUExecutionProvider"],
             "provider_options": [
-                {"device_id": 0, "arena_extend_strategy": "kSameAsRequested"},
+                {
+                    "device_id": 0,
+                    "arena_extend_strategy": "kSameAsRequested",
+                    "cudnn_conv_algo_search": "HEURISTIC",
+                    "cudnn_conv_use_max_workspace": False,
+                },
                 {},
             ],
             "graph_optimization_level": 99,  # ORT_ENABLE_ALL
@@ -130,6 +138,10 @@ def parse_config(args):
 
 def init_ocr(args):
     global _ocr, _recognizer, _det, _use_gpu
+    # 必须在 import paddleocr 之前添加 NVIDIA DLL 路径。
+    # 否则 paddleocr/paddlex 导入过程会干扰后续 ORT CUDA 加载 cuDNN，
+    # 导致 "Invalid handle. Cannot load symbol cudnnCreate" 错误。
+    _setup_nvidia_dlls()
     from paddleocr import PaddleOCR, TextRecognition
 
     config = parse_config(args)
