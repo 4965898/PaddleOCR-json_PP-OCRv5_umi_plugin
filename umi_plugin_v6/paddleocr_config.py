@@ -79,4 +79,15 @@ localOptions = {
         "default": False,
         "toolTip": tr("启用 NVIDIA GPU 加速（需先运行 install_gpu.bat 安装 GPU 组件）。GPU 模式比 CPU 快约 17 倍。无 GPU 或未安装组件时自动降级到 CPU。"),
     },
+    "shrink_poly_ratio": {
+        "title": tr("PDF文本层精对齐"),
+        "optionsList": [
+            [0.0, tr("关闭")],
+            [0.08, tr("0.08（推荐）")],
+            [0.05, tr("0.05（轻微）")],
+            [0.12, tr("0.12（较强）")],
+        ],
+        "default": 0.0,
+        "toolTip": tr("将检测框向内收缩，抵消 DBNet 的 expand_ratio，让 box 更贴合真实文字范围。可改善扫描 PDF 生成的双层 layered.pdf 中文本层与图像的对齐（det 框默认会比真实文字外扩一圈，导致字号被高估、行末字符超出图像文字）。仅 PDF 双层文档场景需要，其他场景可保持关闭。"),
+    },
 }

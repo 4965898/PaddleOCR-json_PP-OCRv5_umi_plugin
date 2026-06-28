@@ -18,6 +18,8 @@ ExeConfigs = [
     ("rec_batch_num", "rec_batch_num"),
     ("limit_side_len", "limit_side_len"),
     ("use_gpu", "use_gpu"),
+    # A1: det 框内缩比例，传给 server.py，0=关闭
+    ("shrink_poly_ratio", "shrink_poly_ratio"),
 ]
 
 

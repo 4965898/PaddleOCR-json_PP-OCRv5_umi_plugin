@@ -26,6 +26,9 @@ os.environ.setdefault("PADDLE_PDX_CACHE_HOME", os.path.join(_script_dir, "models
 _ocr = None  # PaddleOCR 实例（det=True）
 _recognizer = None  # TextRecognition 实例（det=False）
 _det = True
+# det 框内缩比例（抵消 DBNet expand_ratio，让 box 更贴合真实文字，改善 PDF 文本层对齐）
+# 0 表示不收缩；典型值 0.08~0.12（各点向重心移动该比例，框宽高约收缩 2 倍该值）
+_shrink_ratio = 0.0
 
 
 def _setup_nvidia_dlls():
@@ -135,7 +138,7 @@ def parse_config(args):
 
 
 def init_ocr(args):
-    global _ocr, _recognizer, _det, _use_gpu
+    global _ocr, _recognizer, _det, _use_gpu, _shrink_ratio
     # 必须在 import paddleocr 之前添加 NVIDIA DLL 路径。
     # 否则 paddleocr/paddlex 导入过程会干扰后续 ORT CUDA 加载 cuDNN，
     # 导致 "Invalid handle. Cannot load symbol cudnnCreate" 错误。
@@ -151,6 +154,8 @@ def init_ocr(args):
     limit_side_len = args.limit_side_len or 960
     use_gpu = bool(args.use_gpu)
     _use_gpu = use_gpu
+    # A1: det 框内缩比例（0=关闭，典型 0.08~0.12）
+    _shrink_ratio = max(0.0, float(getattr(args, "shrink_poly_ratio", 0.0) or 0.0))
 
     det_model = f"PP-OCRv6_{model_size}_det"
     rec_model = f"PP-OCRv6_{model_size}_rec"
@@ -208,6 +213,67 @@ def _get(page, key, default=None):
     return getattr(page, key, default)
 
 
+def _shrink_poly(poly, ratio):
+    """将 4 点检测框向重心收缩 ratio 比例，抵消 DBNet 后处理的 expand_ratio。
+
+    用于让返回的 box 更贴合真实文字范围，改善 Umi-OCR 生成 layered.pdf 时
+    文本层与图像的对齐（det 框默认会比真实文字外扩一圈，导致字号被高估、
+    行末字符超出图像文字）。
+
+    ratio=0.1 表示各点向重心移动 10%，框宽高约收缩 20%。
+    ratio<=0 时原样返回（整型化）。
+    """
+    if not poly or ratio <= 0:
+        return [[int(p[0]), int(p[1])] for p in poly]
+    try:
+        import numpy as np
+        p = np.asarray(poly, dtype=np.float32)
+        if p.ndim != 2 or p.shape[0] < 3:
+            return [[int(pt[0]), int(pt[1])] for pt in p]
+        cx = float(p[:, 0].mean())
+        cy = float(p[:, 1].mean())
+        shrunk = p + (np.array([cx, cy], dtype=np.float32) - p) * ratio
+        return [[int(round(pt[0])), int(round(pt[1]))] for pt in shrunk]
+    except Exception:
+        return [[int(p[0]), int(p[1])] for p in poly]
+
+
+def _validate_rec_polys(rec_polys, dt_polys, texts):
+    """校验 rec_polys 是否为原图坐标，决定是否优先使用。
+
+    paddleocr 主流版本中 rec_polys 与 dt_polys 同为原图坐标且数值一致，
+    应优先使用 rec_polys（识别阶段对齐后的框，更贴字）。
+    但少数版本可能把 rec_polys 输出为裁剪/透视变换后的局部框，此时坐标
+    范围与 dt_polys 差异显著，必须回退 dt_polys，否则 box 会指向错误位置。
+
+    校验规则：
+      1. 三者长度一致；
+      2. rec_polys / dt_polys 形状一致；
+      3. 二者整体 bbox 的宽高比在 [0.8, 1.2] 区间（同一坐标系）。
+    """
+    if not rec_polys or not dt_polys or not texts:
+        return False
+    n = len(texts)
+    if len(rec_polys) != n or len(dt_polys) != n:
+        return False
+    try:
+        import numpy as np
+        rp = np.asarray(rec_polys, dtype=np.float32)
+        dp = np.asarray(dt_polys, dtype=np.float32)
+        if rp.shape != dp.shape or rp.ndim != 3 or rp.shape[1:] != (4, 2):
+            return False
+        r_range = rp.max(axis=(0, 1)) - rp.min(axis=(0, 1))
+        d_range = dp.max(axis=(0, 1)) - dp.min(axis=(0, 1))
+        if np.any(d_range < 1):  # dt_polys 退化，无法比对
+            return False
+        scale = r_range / d_range
+        if np.any(scale < 0.8) or np.any(scale > 1.2):
+            return False
+        return True
+    except Exception:
+        return False
+
+
 def run_ocr(cmd):
     global _ocr, _recognizer
     if _ocr is None and _recognizer is None:
@@ -238,7 +304,8 @@ def run_ocr(cmd):
                 continue
             texts = _get(page, "rec_texts", None)
             scores = _get(page, "rec_scores", None)
-            polys = _get(page, "rec_polys", None) or _get(page, "dt_polys", None)
+            rec_polys = _get(page, "rec_polys", None)
+            dt_polys = _get(page, "dt_polys", None)
             if texts is None:
                 # rec-only 模式：单数标量
                 text = _get(page, "rec_text", None)
@@ -249,12 +316,19 @@ def run_ocr(cmd):
                 polys = None
             else:
                 scores = scores or []
-                polys = polys or []
+                # A2: 优先 rec_polys（识别阶段对齐后的框，更贴字），但需校验
+                #     其与 dt_polys 处于同一原图坐标系；不一致则回退 dt_polys，
+                #     防止某些 paddleocr 版本把 rec_polys 输出为局部裁剪框
+                if rec_polys and _validate_rec_polys(rec_polys, dt_polys, texts):
+                    polys = rec_polys
+                else:
+                    polys = dt_polys
             for i, text in enumerate(texts):
                 score = float(scores[i]) if i < len(scores) else 0.0
                 if polys and i < len(polys):
                     poly = polys[i]
-                    box = [[int(p[0]), int(p[1])] for p in poly]
+                    # A1: 向重心内缩，抵消 DBNet expand_ratio，让 box 更贴字
+                    box = _shrink_poly(poly, _shrink_ratio)
                 else:
                     box = [[0, 0], [0, 0], [0, 0], [0, 0]]
                 data_list.append({"box": box, "text": text, "score": score})
@@ -291,6 +365,8 @@ def main():
     parser.add_argument("--precision", default=None)
     parser.add_argument("--gpu_id", type=int, default=None)
     parser.add_argument("--use_angle_cls", default=None)
+    # A1: det 框内缩比例，抵消 DBNet expand_ratio，改善 PDF 文本层对齐。0=关闭
+    parser.add_argument("--shrink_poly_ratio", type=float, default=0.0)
 
     args, _ = parser.parse_known_args()
 
