@@ -81,9 +81,8 @@ def _select_engine(use_gpu, cpu_threads=None):
         # arena_extend_strategy=kSameAsRequested：按实际需求分配显存，避免默认
         #   kNextPowerOfTwo 按2的幂分配导致显存碎片化（多页PDF第2页起报 bad allocation）
         # enable_mem_pattern=False：避免不同页 batch size 变化导致内存模式不匹配
-        # cudnn_conv_algo_search=HEURISTIC：用启发式选择卷积算法，避免默认EXHAUSTIVE
-        #   搜索所有算法时分配大量临时workspace（可减少1-2G空闲显存占用）
-        # cudnn_conv_use_max_workspace=False：不预分配最大workspace，进一步减少显存
+        # cudnn_conv_algo_search=DEFAULT：不搜索卷积算法，用cuDNN默认算法
+        #   避免EXHAUSTIVE/HEURISTIC搜索路径触发cuDNN FE的CUDNN_BACKEND_API_FAILED错误
         cfg = {
             "device_type": "gpu",
             "providers": ["CUDAExecutionProvider", "CPUExecutionProvider"],
@@ -91,8 +90,7 @@ def _select_engine(use_gpu, cpu_threads=None):
                 {
                     "device_id": 0,
                     "arena_extend_strategy": "kSameAsRequested",
-                    "cudnn_conv_algo_search": "HEURISTIC",
-                    "cudnn_conv_use_max_workspace": False,
+                    "cudnn_conv_algo_search": "DEFAULT",
                 },
                 {},
             ],

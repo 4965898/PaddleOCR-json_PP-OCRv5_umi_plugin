@@ -1,4 +1,4 @@
-# UmiOCR PP-OCRv6 ONNX Plugin（v1.1）
+# UmiOCR PP-OCRv6 ONNX Plugin（v1.2）
 
 本仓库包含两个版本的 Umi-OCR PaddleOCR 插件：
 
@@ -267,6 +267,15 @@ git clone https://github.com/OneDongua/PaddleOCR-json_PP-OCRv5_umi_plugin.git
 ---
 
 ## 更新日志
+
+### v1.2（2026-06-20）
+
+**修复 GPU 模式 `CUDNN_FE failure 11: CUDNN_BACKEND_API_FAILED` 错误**：
+- v1.1 的 `cudnn_conv_use_max_workspace=False` 导致 workspace 不足，cuDNN FE 无法执行卷积
+- v1.1 的 `cudnn_conv_algo_search=HEURISTIC` 搜索路径也可能触发 cuDNN FE 的 bug
+- 修复：移除 `cudnn_conv_use_max_workspace`，`cudnn_conv_algo_search` 改为 `DEFAULT`（不搜索算法，用 cuDNN 默认算法）
+- 代价：显存占用比 v1.1 略高（workspace 不再限制），但比 v1.0 低（仍有 arena_extend_strategy 控制）
+- 稳定性优先于显存优化
 
 ### v1.1（2026-06-20）
 
