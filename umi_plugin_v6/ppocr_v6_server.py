@@ -86,6 +86,9 @@ def _select_engine(use_gpu, cpu_threads=None):
         # enable_mem_pattern=False：避免不同页 batch size 变化导致内存模式不匹配
         # cudnn_conv_algo_search=DEFAULT：不搜索卷积算法，用cuDNN默认算法
         #   避免EXHAUSTIVE/HEURISTIC搜索路径触发cuDNN FE的CUDNN_BACKEND_API_FAILED错误
+        # cudnn_conv_use_max_workspace=1：为 cuDNN 分配最大 workspace，
+        #   解决 cuDNN 9.x FE 图执行时因 workspace 不足导致的
+        #   CUDNN_BACKEND_API_FAILED 错误（Conv.0 节点即失败）
         cfg = {
             "device_type": "gpu",
             "providers": ["CUDAExecutionProvider", "CPUExecutionProvider"],
@@ -94,6 +97,7 @@ def _select_engine(use_gpu, cpu_threads=None):
                     "device_id": 0,
                     "arena_extend_strategy": "kSameAsRequested",
                     "cudnn_conv_algo_search": "DEFAULT",
+                    "cudnn_conv_use_max_workspace": "1",
                 },
                 {},
             ],
@@ -222,9 +226,12 @@ def _shrink_poly(poly, ratio):
 
     ratio=0.1 表示各点向重心移动 10%，框宽高约收缩 20%。
     ratio<=0 时原样返回（整型化）。
+
+    注意：poly 可能是 numpy 数组，不能直接用 `if not poly` 判空
+    （会触发 ValueError: ambiguous truth value），须用 len() 或 is None。
     """
-    if not poly or ratio <= 0:
-        return [[int(p[0]), int(p[1])] for p in poly]
+    if poly is None or ratio <= 0:
+        return [[int(p[0]), int(p[1])] for p in poly] if poly is not None else []
     try:
         import numpy as np
         p = np.asarray(poly, dtype=np.float32)
@@ -250,8 +257,13 @@ def _validate_rec_polys(rec_polys, dt_polys, texts):
       1. 三者长度一致；
       2. rec_polys / dt_polys 形状一致；
       3. 二者整体 bbox 的宽高比在 [0.8, 1.2] 区间（同一坐标系）。
+
+    注意：rec_polys / dt_polys 可能是 numpy 数组，不能直接 `if not rec_polys`
+    判空（触发 ValueError: ambiguous truth value），须用 is None / len() 判断。
     """
-    if not rec_polys or not dt_polys or not texts:
+    if rec_polys is None or dt_polys is None or not texts:
+        return False
+    if len(rec_polys) == 0 or len(dt_polys) == 0:
         return False
     n = len(texts)
     if len(rec_polys) != n or len(dt_polys) != n:
@@ -319,13 +331,15 @@ def run_ocr(cmd):
                 # A2: 优先 rec_polys（识别阶段对齐后的框，更贴字），但需校验
                 #     其与 dt_polys 处于同一原图坐标系；不一致则回退 dt_polys，
                 #     防止某些 paddleocr 版本把 rec_polys 输出为局部裁剪框
-                if rec_polys and _validate_rec_polys(rec_polys, dt_polys, texts):
+                # 注意：rec_polys / dt_polys 可能是 numpy 数组，不能用 `if rec_polys`
+                # 判空（触发 ValueError），须用 is not None + len() 判断
+                if rec_polys is not None and _validate_rec_polys(rec_polys, dt_polys, texts):
                     polys = rec_polys
                 else:
                     polys = dt_polys
             for i, text in enumerate(texts):
                 score = float(scores[i]) if i < len(scores) else 0.0
-                if polys and i < len(polys):
+                if polys is not None and i < len(polys):
                     poly = polys[i]
                     # A1: 向重心内缩，抵消 DBNet expand_ratio，让 box 更贴字
                     box = _shrink_poly(poly, _shrink_ratio)
@@ -338,8 +352,18 @@ def run_ocr(cmd):
         return {"code": 100, "data": data_list}
     except Exception as e:
         msg = str(e)
-        if "bad allocation" in msg.lower() or "out of memory" in msg.lower():
+        low = msg.lower()
+        if "bad allocation" in low or "out of memory" in low:
             return {"code": 902, "data": "GPU 显存不足（bad allocation）。请降低'识别批处理数'后重试。"}
+        if "cudnn" in low or "cudaexecutionprovider" in low or "conv node" in low:
+            # cuDNN 执行失败：通常是 cuDNN/CUDA 版本与显卡驱动不兼容，
+            # 或 cuDNN 9.x FE 图 API 在特定 GPU 架构上不支持。
+            # 建议用户关闭 GPU 加速改用 CPU 模式（稳定），或更新显卡驱动。
+            return {
+                "code": 902,
+                "data": "GPU cuDNN 执行失败。请在插件设置中关闭'GPU加速'后重试，"
+                "或更新显卡驱动到最新版。详情：" + e.__class__.__name__,
+            }
         return {"code": 902, "data": f"OCR 异常: {e}"}
     finally:
         # 无论成功还是异常，都清理 base64 临时文件，避免泄漏到 %TEMP%
