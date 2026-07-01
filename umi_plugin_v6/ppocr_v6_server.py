@@ -58,15 +58,57 @@ def _cleanup_gpu_memory():
     # session 及其显存。不要尝试手动调用 session.run_options.free()——RunOptions
     # 没有公开的 free() 方法，调用会抛 AttributeError 被静默吞掉，实际无效。
     gc.collect()
+    # 释放 PyTorch 的 CUDA 缓存（paddleocr 部分模块可能用 torch）
     try:
         import torch
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
     except Exception:
         pass
+    # 释放 PaddlePaddle 的 CUDA 缓存（paddleocr 推理时 paddle 会缓存显存，
+    # torch.empty_cache 对 paddle 无效，必须调 paddle 自己的释放 API）
+    try:
+        import paddle
+        if hasattr(paddle, "device") and hasattr(paddle.device, "cuda"):
+            paddle.device.cuda.empty_cache()
+    except Exception:
+        pass
 
 
-def _select_engine(use_gpu, cpu_threads=None):
+def _get_gpu_total_memory_gb():
+    """获取 GPU 总显存（GB），用于动态计算 gpu_mem_limit。
+    检测顺序：paddle → torch → nvidia-smi 命令 → 默认 8GB。
+    """
+    # 1. paddle
+    try:
+        import paddle
+        if hasattr(paddle, "device") and hasattr(paddle.device, "cuda"):
+            props = paddle.device.cuda.get_device_properties(0)
+            return props.total_memory / (1024 ** 3)
+    except Exception:
+        pass
+    # 2. torch
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+    except Exception:
+        pass
+    # 3. nvidia-smi 命令
+    try:
+        import subprocess
+        r = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return int(r.stdout.strip().split("\n")[0]) / 1024
+    except Exception:
+        pass
+    return 8.0  # 默认 8GB
+
+
+def _select_engine(use_gpu, cpu_threads=None, model_size="medium"):
     """自动选择推理引擎。优先 onnxruntime（轻量），未安装则回退 paddle。
 
     注意：mkldnn（oneDNN）是 paddlepaddle 的 CPU 加速后端，对 onnxruntime 无效。
@@ -86,18 +128,30 @@ def _select_engine(use_gpu, cpu_threads=None):
         # enable_mem_pattern=False：避免不同页 batch size 变化导致内存模式不匹配
         # cudnn_conv_algo_search=DEFAULT：不搜索卷积算法，用cuDNN默认算法
         #   避免EXHAUSTIVE/HEURISTIC搜索路径触发cuDNN FE的CUDNN_BACKEND_API_FAILED错误
-        # cudnn_conv_use_max_workspace=1：为 cuDNN 分配最大 workspace，
-        #   解决 cuDNN 9.x FE 图执行时因 workspace 不足导致的
-        #   CUDNN_BACKEND_API_FAILED 错误（Conv.0 节点即失败）
+        # cudnn_conv_use_max_workspace：cuDNN 卷积 workspace 模式（显存大户）
+        #   medium 模型用 "1"：避免 cuDNN 9.x FE 图执行时 workspace 不足导致
+        #     CUDNN_BACKEND_API_FAILED 错误（Conv.0 节点即失败）
+        #   small 模型用 "0"：卷积层少，不会触发 workspace 不足；可省 2-4GB 显存
+        use_max_ws = "1" if model_size == "medium" else "0"
+        # gpu_mem_limit：按显卡总显存动态分配 ORT CUDA arena 上限（字节），
+        #   充分发挥不同显卡性能，而非硬编码固定值。
+        #   small 模型：40%（模型小，激活值少）
+        #   medium 模型：65%（留 35% 给 cuDNN、CUDA context、paddle 缓存等）
+        #   8GB 显卡示例：small 3.2GB / medium 5.2GB
+        #   12GB 显卡示例：small 4.8GB / medium 7.8GB
+        gpu_total_gb = _get_gpu_total_memory_gb()
+        ratio = 0.65 if model_size == "medium" else 0.40
+        gpu_mem_limit = int(gpu_total_gb * ratio * 1024 * 1024 * 1024)
         cfg = {
             "device_type": "gpu",
             "providers": ["CUDAExecutionProvider", "CPUExecutionProvider"],
             "provider_options": [
                 {
                     "device_id": 0,
+                    "gpu_mem_limit": gpu_mem_limit,
                     "arena_extend_strategy": "kSameAsRequested",
                     "cudnn_conv_algo_search": "DEFAULT",
-                    "cudnn_conv_use_max_workspace": "1",
+                    "cudnn_conv_use_max_workspace": use_max_ws,
                 },
                 {},
             ],
@@ -163,7 +217,7 @@ def init_ocr(args):
 
     det_model = f"PP-OCRv6_{model_size}_det"
     rec_model = f"PP-OCRv6_{model_size}_rec"
-    engine, engine_config = _select_engine(use_gpu, args.cpu_threads)
+    engine, engine_config = _select_engine(use_gpu, args.cpu_threads, model_size)
 
     engine_kwargs = {}
     if engine:

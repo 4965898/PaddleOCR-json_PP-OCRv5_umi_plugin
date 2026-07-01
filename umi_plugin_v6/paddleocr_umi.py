@@ -187,6 +187,9 @@ class Api:
 
     def __ramClear(self):
         if self.ramInfo["max"] > 0:
+            # 子进程可能已崩溃被 exit() 置 None（用户日志中的 AttributeError 来源）
+            if self.api is None or getattr(self.api, "ret", None) is None:
+                return
             pid = self.api.ret.pid
             rss = psutil.Process(pid).memory_info().rss
             rss /= 1048576

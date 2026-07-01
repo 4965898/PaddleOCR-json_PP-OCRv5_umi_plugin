@@ -1,4 +1,4 @@
-# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）
+# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v1.3
 
 基于 [PaddleOCR 3.7.0](https://github.com/PaddlePaddle/PaddleOCR) + [ONNX Runtime](https://onnxruntime.ai/) 的 Umi-OCR 插件，使用最新的 **PP-OCRv6** 模型。
 
@@ -10,6 +10,8 @@
 - **两档模型**：medium（高精度）/ small（快速），可随时切换
 - **多语言识别**：PP-OCRv6 识别模型为多语言模型，可识别中英日韩等，无需按语言切换
 - **性能优化**：开启 ONNX Runtime 图优化最高级 + 内存模式，充分利用 CPU 多核
+- **GPU 显存动态分配**：按显卡总显存自适应分配 ORT CUDA arena 上限（small 40% / medium 65%），8GB 显卡稳定在 5.8GB，不再吃满显存
+- **显存碎片防护**：每页识别后自动清理 paddle + torch CUDA 缓存，防止多页 PDF 显存累积导致 bad allocation
 - **UTF-8 编码**：修复 Windows 下中文识别乱码问题
 
 ## 环境要求
@@ -61,6 +63,15 @@ Umi-OCR/
 > | GPU | 0.55s | **17x** |
 >
 > 首次识别会稍慢（GPU 内核初始化），后续识别速度大幅提升。无 GPU 或缺少运行库时会自动降级到 CPU。
+>
+> **显存自适应分配**（v1.3 新增）：插件会自动检测显卡总显存，并按模型尺寸动态分配 ORT CUDA arena 上限：
+>
+> | 模型尺寸 | 显存占比 | 8GB 显卡示例 | 12GB 显卡示例 |
+> |---------|---------|-------------|--------------|
+> | small（快速） | 40% | 3.2GB | 4.8GB |
+> | medium（高精度） | 65% | 5.2GB | 7.8GB |
+>
+> 留出的显存给 cuDNN workspace、CUDA context、paddle 缓存等使用，避免显存吃满导致 bad allocation 或 CUDA error 999。每页识别后还会自动清理 paddle + torch 的 CUDA 缓存，防止多页 PDF 显存碎片累积。
 
 ### 第 3 步：重启 Umi-OCR
 
@@ -160,3 +171,24 @@ A: 在 Umi-OCR 的插件设置中切换「模型尺寸」。切换后会重新�
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) - 百度飞桨 OCR
 - [ONNX Runtime](https://onnxruntime.ai/) - 微软跨平台推理引擎
 - [Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) - 免费开源的 OCR 软件
+
+## 更新日志
+
+### v1.3
+
+- **GPU 显存动态分配**：按显卡总显存自适应分配 ORT CUDA arena 上限（small 40% / medium 65%），替代原先硬编码的固定上限。8GB 显卡实测 medium 模型 + rec_batch_num=20 稳定在 5.8GB。
+- **paddle 显存清理**：`_cleanup_gpu_memory()` 新增 `paddle.device.cuda.empty_cache()` 调用。原实现只清理 torch 缓存，对 paddleocr 推理时的 paddle CUDA 缓存无效，导致多页 PDF 显存从 1GB 逐渐累积到 7.8GB。
+- **`__ramClear` 崩溃修复**：子进程崩溃后 `exit()` 会把 `self.api.ret` 置为 None，原 `__ramClear` 未判空直接访问 `.pid` 导致 `AttributeError`。新增 `if self.api is None or getattr(self.api, "ret", None) is None: return` 保护。
+- **GPU 显存检测**：新增 `_get_gpu_total_memory_gb()`，三级 fallback（paddle → torch → nvidia-smi）准确识别显卡总显存。
+
+### v1.2
+
+- 修复 CUDNN_FE failure 11 错误（移除 workspace 限制 + 改用 DEFAULT 算法）
+- 新增 PDF 文本层精对齐选项（推荐比例 0.08）
+- 修复 CPU 模式 numpy 数组真值判断崩溃
+- 修复 GPU cuDNN FE 执行失败
+
+### v1.1
+
+- 修复 cuDNN 加载失败
+- GPU 显存优化（首次引入 `gpu_mem_limit` + `arena_extend_strategy`）
