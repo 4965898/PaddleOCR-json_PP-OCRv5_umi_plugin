@@ -51,6 +51,8 @@ Umi-OCR/
 
 > **GPU 加速**（可选，推荐 NVIDIA 显卡用户使用）：
 >
+> **显卡要求**：CUDA 加速仅支持 **GTX 10 系列及之后**的 NVIDIA 显卡（如 GTX 1050/1060/1070/1080、RTX 20/30/40/50 系列等）。GTX 10 之前的显卡（如 GTX 9xx、7xx、6xx 等）不支持本插件依赖的现代 CUDA/cuDNN 运行库，无法启用 GPU 加速。此类老显卡用户建议使用 CPU 模式，或改用旧版 **PP-OCRv5** 插件（兼容性更好）。
+>
 > 如需 GPU 加速，双击运行 `install_gpu.bat`，脚本会自动安装 `onnxruntime-gpu` + CUDA Runtime + cuDNN（约 1.6GB），无需手动下载任何文件。
 >
 > 安装完成后，在 Umi-OCR 插件设置中勾选「启用GPU」即可。
@@ -162,6 +164,8 @@ A: 本插件已修复 Windows 下中文乱码问题（server 强制 UTF-8 编码
 
 ### Q: GPU 不生效？
 A: 运行 `install_gpu.bat` 一键安装 GPU 所需组件（onnxruntime-gpu + CUDA Runtime + cuDNN）。安装后 onnxruntime 会自动加载 CUDA provider。如仍不生效，检查显卡驱动是否为最新版本。无 GPU 时会自动降级到 CPU。
+
+> **显卡兼容性**：CUDA 加速仅支持 GTX 10 系列及之后的 NVIDIA 显卡。GTX 10 之前的显卡（如 GTX 9xx、7xx 等）不支持现代 CUDA/cuDNN，GPU 加速无法生效，请使用 CPU 模式，或改用旧版 PP-OCRv5 插件。
 
 ### Q: 如何切换模型尺寸？
 A: 在 Umi-OCR 的插件设置中切换「模型尺寸」。切换后会重新加载引擎，首次使用新尺寸时需下载对应模型。
