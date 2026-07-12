@@ -48,6 +48,7 @@ def _setup_nvidia_dlls():
 
 
 _use_gpu = False
+_engine = None  # 推理引擎名称（"onnxruntime" / "paddle" / None）
 
 
 def _cleanup_gpu_memory():
@@ -67,6 +68,15 @@ def _cleanup_gpu_memory():
         pass
     # 释放 PaddlePaddle 的 CUDA 缓存（paddleocr 推理时 paddle 会缓存显存，
     # torch.empty_cache 对 paddle 无效，必须调 paddle 自己的释放 API）
+    # 注意：当引擎是 onnxruntime 时，paddle 未参与推理，其 CUDA 上下文可能未
+    # 完全初始化。此时调 paddle.device.cuda.empty_cache() 会触发 paddle 延迟
+    # 初始化 CUDA 上下文，与 ORT 的 CUDAExecutionProvider 上下文冲突，导致
+    # CUDA 上下文损坏。后续 ORT session.run() 会因上下文损坏而 native 崩溃
+    # （绕过 Python try/except，表现为 rec-only 模式识别两页后进程死亡）。
+    # det=True 路径下 PaddleOCR pipeline 会正常初始化 paddle CUDA 上下文，
+    # 所以不受影响；仅 onnxruntime 引擎需要跳过。
+    if _engine == "onnxruntime":
+        return
     try:
         import paddle
         if hasattr(paddle, "device") and hasattr(paddle.device, "cuda"):
@@ -129,18 +139,19 @@ def _select_engine(use_gpu, cpu_threads=None, model_size="medium"):
         # cudnn_conv_algo_search=DEFAULT：不搜索卷积算法，用cuDNN默认算法
         #   避免EXHAUSTIVE/HEURISTIC搜索路径触发cuDNN FE的CUDNN_BACKEND_API_FAILED错误
         # cudnn_conv_use_max_workspace：cuDNN 卷积 workspace 模式（显存大户）
-        #   medium 模型用 "1"：避免 cuDNN 9.x FE 图执行时 workspace 不足导致
-        #     CUDNN_BACKEND_API_FAILED 错误（Conv.0 节点即失败）
-        #   small 模型用 "0"：卷积层少，不会触发 workspace 不足；可省 2-4GB 显存
-        use_max_ws = "1" if model_size == "medium" else "0"
+        #   统一用 "1"：给 cuDNN 充足 workspace 以找到合法卷积算法。
+        #   small 模型在几近空白页（仅竖线）上，卷积激活值分布异常，
+        #   workspace="0" 会导致 cuDNN 找不到有效算法而触发 native 崩溃
+        #   （绕过 Python try/except，表现为进程死亡、GPU 占用归零）。
+        use_max_ws = "1"
         # gpu_mem_limit：按显卡总显存动态分配 ORT CUDA arena 上限（字节），
         #   充分发挥不同显卡性能，而非硬编码固定值。
-        #   small 模型：40%（模型小，激活值少）
+        #   small 模型：50%（workspace="1" 需更多显存，原 40% 偏紧）
         #   medium 模型：65%（留 35% 给 cuDNN、CUDA context、paddle 缓存等）
-        #   8GB 显卡示例：small 3.2GB / medium 5.2GB
-        #   12GB 显卡示例：small 4.8GB / medium 7.8GB
+        #   8GB 显卡示例：small 4.0GB / medium 5.2GB
+        #   12GB 显卡示例：small 6.0GB / medium 7.8GB
         gpu_total_gb = _get_gpu_total_memory_gb()
-        ratio = 0.65 if model_size == "medium" else 0.40
+        ratio = 0.65 if model_size == "medium" else 0.50
         gpu_mem_limit = int(gpu_total_gb * ratio * 1024 * 1024 * 1024)
         cfg = {
             "device_type": "gpu",
@@ -196,7 +207,7 @@ def parse_config(args):
 
 
 def init_ocr(args):
-    global _ocr, _recognizer, _det, _use_gpu, _shrink_ratio
+    global _ocr, _recognizer, _det, _use_gpu, _shrink_ratio, _engine
     # 必须在 import paddleocr 之前添加 NVIDIA DLL 路径。
     # 否则 paddleocr/paddlex 导入过程会干扰后续 ORT CUDA 加载 cuDNN，
     # 导致 "Invalid handle. Cannot load symbol cudnnCreate" 错误。
@@ -218,6 +229,7 @@ def init_ocr(args):
     det_model = f"PP-OCRv6_{model_size}_det"
     rec_model = f"PP-OCRv6_{model_size}_rec"
     engine, engine_config = _select_engine(use_gpu, args.cpu_threads, model_size)
+    _engine = engine  # 记录引擎类型，供 _cleanup_gpu_memory 判断是否跳过 paddle 清理
 
     engine_kwargs = {}
     if engine:
@@ -258,6 +270,8 @@ def init_ocr(args):
         # TextRecognition 不接受 text_recognition_batch_size / lang 等参数
         rec_args = {}
         if use_local:
+            # 本地目录 + 模型名都要传，否则 paddlex 默认用 medium，与 small 目录不匹配
+            rec_args["model_name"] = rec_model
             rec_args["model_dir"] = rec_onnx_dir
         else:
             rec_args["model_name"] = rec_model

@@ -1,4 +1,4 @@
-# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v1.3
+# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v1.4
 
 基于 [PaddleOCR 3.7.0](https://github.com/PaddlePaddle/PaddleOCR) + [ONNX Runtime](https://onnxruntime.ai/) 的 Umi-OCR 插件，使用最新的 **PP-OCRv6** 模型。
 
@@ -10,8 +10,8 @@
 - **两档模型**：medium（高精度）/ small（快速），可随时切换
 - **多语言识别**：PP-OCRv6 识别模型为多语言模型，可识别中英日韩等，无需按语言切换
 - **性能优化**：开启 ONNX Runtime 图优化最高级 + 内存模式，充分利用 CPU 多核
-- **GPU 显存动态分配**：按显卡总显存自适应分配 ORT CUDA arena 上限（small 40% / medium 65%），8GB 显卡稳定在 5.8GB，不再吃满显存
-- **显存碎片防护**：每页识别后自动清理 paddle + torch CUDA 缓存，防止多页 PDF 显存累积导致 bad allocation
+- **GPU 显存动态分配**：按显卡总显存自适应分配 ORT CUDA arena 上限（small 50% / medium 65%），8GB 显卡稳定在 5.8GB，不再吃满显存
+- **显存碎片防护**：每页识别后自动清理 GPU 缓存（paddle/torch），防止多页 PDF 显存累积导致 bad allocation
 - **UTF-8 编码**：修复 Windows 下中文识别乱码问题
 
 ## 环境要求
@@ -66,14 +66,14 @@ Umi-OCR/
 >
 > 首次识别会稍慢（GPU 内核初始化），后续识别速度大幅提升。无 GPU 或缺少运行库时会自动降级到 CPU。
 >
-> **显存自适应分配**（v1.3 新增）：插件会自动检测显卡总显存，并按模型尺寸动态分配 ORT CUDA arena 上限：
+> **显存自适应分配**（v1.3 新增，v1.4 优化）：插件会自动检测显卡总显存，并按模型尺寸动态分配 ORT CUDA arena 上限：
 >
 > | 模型尺寸 | 显存占比 | 8GB 显卡示例 | 12GB 显卡示例 |
 > |---------|---------|-------------|--------------|
-> | small（快速） | 40% | 3.2GB | 4.8GB |
+> | small（快速） | 50% | 4.0GB | 6.0GB |
 > | medium（高精度） | 65% | 5.2GB | 7.8GB |
 >
-> 留出的显存给 cuDNN workspace、CUDA context、paddle 缓存等使用，避免显存吃满导致 bad allocation 或 CUDA error 999。每页识别后还会自动清理 paddle + torch 的 CUDA 缓存，防止多页 PDF 显存碎片累积。
+> 留出的显存给 cuDNN workspace、CUDA context、paddle 缓存等使用，避免显存吃满导致 bad allocation 或 CUDA error 999。每页识别后还会自动清理 GPU 缓存，防止多页 PDF 显存碎片累积。
 
 ### 第 3 步：重启 Umi-OCR
 
@@ -177,6 +177,12 @@ A: 在 Umi-OCR 的插件设置中切换「模型尺寸」。切换后会重新�
 - [Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) - 免费开源的 OCR 软件
 
 ## 更新日志
+
+### v1.4
+
+- **修复 rec-only 模式崩溃**（det=False）：`TextRecognition` 初始化时未传 `model_name`，paddlex 默认用 `PP-OCRv6_medium_rec`，与 small 本地目录不匹配导致 init 失败（错误码 803）。补传 `model_name = rec_model`。
+- **修复 small 模型空白页卡死**（det=True）：small 模型原先 `cudnn_conv_use_max_workspace="0"`，在几近空白页（仅竖线）上 cuDNN 找不到有效卷积算法，触发 native 崩溃绕过 Python try/except。统一改为 `"1"`，同时将 small 显存占比从 40% 提到 50% 以覆盖 workspace 增量。
+- **修复 rec-only 两页后停止**（det=False）：`_cleanup_gpu_memory()` 在 ORT 引擎下调 `paddle.device.cuda.empty_cache()` 会触发 paddle 延迟初始化 CUDA 上下文，与 ORT 的 CUDAExecutionProvider 冲突导致上下文损坏。新增 `_engine` 全局变量，ORT 引擎时跳过 paddle 清理（det=True 路径不受影响，paddle 上下文已由 pipeline 正常初始化）。
 
 ### v1.3
 
