@@ -99,6 +99,7 @@ class Api:
             if c[1] in data:
                 target[c[0]] = data[c[1]]
         self._updateLimitSideLen(target, data)
+        self._updateShrinkPolyRatio(target, data)
 
     def _updateLimitSideLen(self, target, data):
         if "limit_side_len" not in data:
@@ -112,6 +113,22 @@ class Api:
                 target["limit_side_len"] = 960
         else:
             target["limit_side_len"] = sideLen
+
+    def _updateShrinkPolyRatio(self, target, data):
+        # 处理 "PDF文本层精对齐" 选择 "自定义" 的情况：
+        # optionsList 里 "custom" 字符串先被 ExeConfigs 循环填入 target["shrink_poly_ratio"]，
+        # 这里再用 shrink_poly_ratio_custom 的浮点值覆盖。与 _updateLimitSideLen 同模式。
+        if "shrink_poly_ratio" not in data:
+            return
+        ratio = data["shrink_poly_ratio"]
+        if ratio == "custom":
+            custom = data.get("shrink_poly_ratio_custom")
+            if isinstance(custom, (int, float)) and custom >= 0.0:
+                target["shrink_poly_ratio"] = float(custom)
+            else:
+                target["shrink_poly_ratio"] = 0.08
+        else:
+            target["shrink_poly_ratio"] = ratio
 
     def _makeEngineSign(self, exeConfigs):
         return tuple(sorted(exeConfigs.items()))

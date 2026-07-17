@@ -86,8 +86,17 @@ localOptions = {
             [0.08, tr("0.08（推荐）")],
             [0.05, tr("0.05（轻微）")],
             [0.12, tr("0.12（较强）")],
+            ["custom", tr("自定义")],
         ],
         "default": 0.0,
         "toolTip": tr("将检测框向内收缩，抵消 DBNet 的 expand_ratio，让 box 更贴合真实文字范围。可改善扫描 PDF 生成的双层 layered.pdf 中文本层与图像的对齐（det 框默认会比真实文字外扩一圈，导致字号被高估、行末字符超出图像文字）。仅 PDF 双层文档场景需要，其他场景可保持关闭。"),
+    },
+    "shrink_poly_ratio_custom": {
+        "title": tr("自定义精对齐比例"),
+        "default": 0.08,
+        "min": 0.0,
+        "max": 0.5,
+        "isInt": False,
+        "toolTip": tr('当"PDF文本层精对齐"选择"自定义"时生效。典型值 0.08，范围 0.02~0.20。0=关闭。'),
     },
 }

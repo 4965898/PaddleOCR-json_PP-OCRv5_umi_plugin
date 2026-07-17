@@ -11,16 +11,16 @@ PaddleOCR PP-OCRv6,PaddleOCR PP-OCRv6,PaddleOCR PP-OCRv6,PaddleOCR PP-OCRv6
 启用文本检测,Enable text detection,啟用文本檢測,テキスト検出を有効にする
 启用det目标检测。若图片中只含一行文本且无空白区域，可关闭det以加快速度。,Enable det object detection. If the image contains only one line of text with no blank areas, you can disable det to speed up recognition.,啟用det目標檢測。若圖片中只含一行文本且無空白區域，可關閉det以加快速度。,det目標検出を有効にする。画像に1行のテキストしかなく、空白領域がない場合、detを無効にして速度を向上させることができます。
 纠正文本方向,Text direction correction,糾正文字方向,テキスト方向の修正
-启用方向分类，识别倾斜或倒置的文本。可能降低识别速度。,Enable direction classification to recognize slanted or inverted text. This may reduce recognition speed.,啟用方向分類，識別傾斜或倒置的文字。 可能降低識別速度。,方向分類を有効にして、傾斜または反転したテキストを識別します。認識速度が低下する可能性があります。
+启用方向分类，识别倾斜或倒置的文本。可能降低识别速度。,Enable direction classification to recognize slanted or inverted text. This may reduce recognition speed.,啟用方向分類，識別傾斜または反転したテキストを識別します。認識速度が低下する可能性があります。,方向分類を有効にして、傾斜または反転したテキストを識別します。認識速度が低下する可能性があります。
 识别批处理数,Recognition batch size,識別批處理數,認識バッチサイズ
-识别模型批处理大小。CPU 下：medium 建议保持默认 6（调大可能变慢），small 可调大到 16-32。GPU 下：可大幅调高以提升速度，但受显存限制，爆显存时报错请调小此值。,"Recognition model batch size. CPU: medium keep default 6 (larger may slow down), small can go up to 16-32. GPU: increase for speed, but limited by VRAM — reduce if OOM error.",識別模型批處理大小。CPU 下：medium 建議保持默認 6（調大可能變慢），small 可調大到 16-32。GPU 下：可大幅調高以提升速度，但受顯存限制，爆顯存時報錯請調小此値。,認識モデルのバッチサイズ。CPU：mediumはデフォルト6を推奨（大きくすると遅くなる可能性）、smallは16-32まで増加可能。GPU：大きくすると速度向上、ただしVRAM制限あり、OOMエラー時は値を下げてください。
+识别模型批处理大小。CPU 下：medium 建议保持默认 6（调大可能变慢），small 可调大到 16-32。GPU 下：可大幅调高以提升速度，但受显存限制，爆显存时报错请调小此值。,"Recognition model batch size. CPU: medium keep default 6 (larger may slow down), small can go up to 16-32. GPU: increase for speed, but limited by VRAM — reduce if OOM error.",識別模型批處理大小。CPU 下：medium 建議保持默認 6（調大可能變慢），small 可調大到 16-32。GPU 下：可大幅調高以提升速度，但受顯存限制，爆顯存時報錯請調小源值。,認識モデルのバッチサイズ。CPU：mediumはデフォルト6を推奨（大きくすると遅くなる可能性）、smallは16-32まで増加可能。GPU：大きくすると速度向上、ただしVRAM制限あり、OOMエラー時は値を下げてください。
 限制图像边长,Limit image edge length,限制影像邊長,画像の辺の長さを制限する
 （默认）,(Default),（默認）,(デフォルト)
 无限制,Unlimited,無限制,制限なし
 自定义,Custom,自定義,カスタム
 自定义图像边长,Custom image edge length,自定義影像邊長,カスタム画像辺長
 当"限制图像边长"选择"自定义"时生效。建议填写32或48的公倍数。,"Effective when 'Limit image edge length' is set to 'Custom'. It is recommended to use a common multiple of 32 or 48.",當「限制影像邊長」選擇「自定義」時生效。建議填寫32或48的公倍數。,「画像の辺の長さを制限」が「カスタム」の場合に有効です。32または48の公倍数を推奨します。
-将边长大于该值的图片进行压缩，可以提高识别速度。可能降低识别精度。,Compress images with edge length greater than this value to improve recognition speed. This may reduce recognition accuracy.,將邊長大於該值的圖片進行壓縮，可以提高識別速度。 可能降低識別精度。,辺の長さがこの値より大きい画像を圧縮することで、認識速度を高めることができます。認識精度が低下する可能性があります。
+将边长大于该值的图片进行压缩，可以提高识别速度。可能降低识别精度。,Compress images with edge length greater than this value to improve recognition speed. This may reduce recognition accuracy.,將邊長大於該值的圖片進行圧縮，可以提高識別速度。 可能降低識別精度。,辺の長さがこの値より大きい画像を圧縮することで、認識速度を高めることができます。認識精度が低下する可能性があります。
 竖排文字模式,Vertical text mode,豎排文字模式,縦書きモード
 启用后，识别结果将按竖排阅读顺序重排：从右到左逐列，每列从上到下。适用于竖排繁体中文等场景。,"When enabled, recognition results will be reordered in vertical reading order: right-to-left by column, top-to-bottom within each column. Suitable for vertical traditional Chinese, etc.","啟用後，識別結果將按豎排閱讀順序重排：從右到左逐列，每列從上到下。適用於豎排繁體中文等場景。",有効にすると、認識結果が縦書きの読み順に再配置されます：右から左へ列ごと、各列は上から下へ。縦書き繁体字中国語などに適しています。
 启用GPU加速,Enable GPU acceleration,啟用GPU加速,GPU高速化を有効にする
@@ -31,3 +31,5 @@ PDF文本层精对齐,PDF text layer alignment,PDF文本層精對齊,PDFテキ�
 0.05（轻微）,0.05 (Slight),0.05（輕微）,0.05（軽微）
 0.12（较强）,0.12 (Strong),0.12（較強）,0.12（強め）
 将检测框向内收缩，抵消 DBNet 的 expand_ratio，让 box 更贴合真实文字范围。可改善扫描 PDF 生成的双层 layered.pdf 中文本层与图像的对齐（det 框默认会比真实文字外扩一圈，导致字号被高估、行末字符超出图像文字）。仅 PDF 双层文档场景需要，其他场景可保持关闭。,"Shrink detection boxes inward to cancel DBNet's expand_ratio so boxes fit actual text more tightly. Improves alignment between text layer and image in layered.pdf generated from scanned PDFs (det boxes are slightly larger than actual text, causing overestimated font size and text overflow). Only needed for PDF dual-layer documents; can stay off otherwise.",將檢測框向內收縮，抵消 DBNet 的 expand_ratio，讓 box 更貼合真實文字範圍。可改善掃描 PDF 生成的雙層 layered.pdf 中文本層與圖像的對齊（det 框默認會比真實文字外擴一圈，導致字號被高估、行末字符超出圖像文字）。僅 PDF 雙層文檔場景需要，其他場景可保持關閉。,検出ボックスを内側に収縮し、DBNetのexpand_ratioを打ち消してboxを実際の文字範囲に近づけます。スキャンPDFから生成したレイヤーPDFでテキスト層と画像の整列を改善します（detボックスは実際の文字より一回り大きく、フォントサイズが過大評価され行末文字が画像からはみ出す原因）。PDFレイヤー文書場面のみ必要、その他の場面ではオフのままで構いません。
+自定义精对齐比例,Custom alignment ratio,自定義精對齊比例,カスタム整列比率
+当「PDF文本层精对齐」选择「自定义」时生效。典型值 0.08，范围 0.02~0.20。0=关闭。,"Effective when ""PDF text layer alignment"" is ""Custom"". Typical value 0.08. Range 0.02~0.20. 0=off.",當「PDF文本層精對齊」選擇「自定義」時生效。典型值 0.08，範圍 0.02~0.20。0=關閉。,「PDFテキスト層の高精度整列」で「カスタム」を選択した場合に有効です。典型的な値は 0.08、範囲 0.02~0.20。0=オフ。
