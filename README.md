@@ -62,7 +62,7 @@ Umi-OCR/
 
 > **GPU 加速**（可选，推荐 NVIDIA 显卡用户使用）：
 >
-> **显卡要求**：CUDA 加速仅支持 **GTX 10 系列及之后** 的 NVIDIA 显卡（如 GTX 1050/1060/1070/1080、RTX 20/30/40/50 系列等）。GTX 10 之前的显卡（如 GTX 9xx、7xx、6xx 等）不支持本插件依赖的现代 CUDA/cuDNN 运行库，无法启用 GPU 加速。此类老显卡用户建议使用 CPU 模式，或改用旧版 **PP-OCRv5** 插件（兼容性更好）。
+> **显卡要求**：CUDA 加速仅支持 **GTX 10 系列及之后**的 NVIDIA 显卡（如 GTX 1050/1060/1070/1080、RTX 20/30/40/50 系列等）。GTX 10 之前的显卡（如 GTX 9xx、7xx、6xx 等）不支持本插件依赖的现代 CUDA/cuDNN 运行库，无法启用 GPU 加速。此类老显卡用户建议使用 CPU 模式，或改用旧版 **PP-OCRv5** 插件（兼容性更好）。
 >
 > 如需 GPU 加速，双击运行 `install_gpu.bat`，脚本会自动安装 `onnxruntime-gpu` + CUDA Runtime + cuDNN（约 1.6GB），无需手动下载任何文件。
 >
