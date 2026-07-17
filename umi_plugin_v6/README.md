@@ -1,4 +1,4 @@
-# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v1.4
+# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v1.5
 
 基于 [PaddleOCR 3.7.0](https://github.com/PaddlePaddle/PaddleOCR) + [ONNX Runtime](https://onnxruntime.ai/) 的 Umi-OCR 插件，使用最新的 **PP-OCRv6** 模型。
 
@@ -11,7 +11,7 @@
 - **多语言识别**：PP-OCRv6 识别模型为多语言模型，可识别中英日韩等，无需按语言切换
 - **性能优化**：开启 ONNX Runtime 图优化最高级 + 内存模式，充分利用 CPU 多核
 - **GPU 显存动态分配**：按显卡总显存自适应分配 ORT CUDA arena 上限（small 50% / medium 65%），8GB 显卡稳定在 5.8GB，不再吃满显存
-- **显存碎片防护**：每页识别后自动清理 GPU 缓存（paddle/torch），防止多页 PDF 显存累积导致 bad allocation
+- **显存碎片防护**：每页识别后自动清理 GPU 缓存（paddle/torch），每 50 页自动重建 ORT session 释放 BFC arena 碎片，防止长 PDF 末尾报 `BFCArena::AllocateRawInternal` 错误；遇到该错误时自动重建 session 并重试当前页
 - **UTF-8 编码**：修复 Windows 下中文识别乱码问题
 
 ## 环境要求
@@ -51,7 +51,7 @@ Umi-OCR/
 
 > **GPU 加速**（可选，推荐 NVIDIA 显卡用户使用）：
 >
-> **显卡要求**：CUDA 加速仅支持 **GTX 10 系列及之后**的 NVIDIA 显卡（如 GTX 1050/1060/1070/1080、RTX 20/30/40/50 系列等）。GTX 10 之前的显卡（如 GTX 9xx、7xx、6xx 等）不支持本插件依赖的现代 CUDA/cuDNN 运行库，无法启用 GPU 加速。此类老显卡用户建议使用 CPU 模式，或改用旧版 **PP-OCRv5** 插件（兼容性更好）。
+> **显卡要求**：CUDA 加速仅支持 **GTX 10 系列及之后** 的 NVIDIA 显卡（如 GTX 1050/1060/1070/1080、RTX 20/30/40/50 系列等）。GTX 10 之前的显卡（如 GTX 9xx、7xx、6xx 等）不支持本插件依赖的现代 CUDA/cuDNN 运行库，无法启用 GPU 加速。此类老显卡用户建议使用 CPU 模式，或改用旧版 **PP-OCRv5** 插件（兼容性更好）。
 >
 > 如需 GPU 加速，双击运行 `install_gpu.bat`，脚本会自动安装 `onnxruntime-gpu` + CUDA Runtime + cuDNN（约 1.6GB），无需手动下载任何文件。
 >
@@ -177,6 +177,16 @@ A: 在 Umi-OCR 的插件设置中切换「模型尺寸」。切换后会重新�
 - [Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) - 免费开源的 OCR 软件
 
 ## 更新日志
+
+### v1.5
+
+- **修复长 PDF 末尾 BFC arena 失败**：跑几百页英文 PDF 时，ORT 的 BFC arena 会累积前面页的 buffer 不释放（设计如此，为复用），到最后几页 `FusedMatMul` / `BiasSoftmax` 等大块节点申请不到连续显存就报 `BFCArena::AllocateRawInternal: Available memory of X is smaller than requested bytes of Y`。原 `_cleanup_gpu_memory()` 只能 `gc.collect()` + `torch.cuda.empty_cache()`，对 ORT 的 arena 无效——必须销毁 session 才能让 arena 归还 CUDA。
+  - 新增 `_rebuild_ocr()`：销毁并重建 ORT session，强制释放整个 arena（代价 2~3 秒重新加载模型）
+  - **周期性重建**：每 50 页自动重建一次（8GB 显卡阈值；更小显存可调小至 30，更大可调到 100）
+  - **错误自动恢复**：检测到 BFC arena 错误时自动重建 session 并重试当前页一次
+  - `init_ocr()` 新增 `_init_args` 保存，供重建复用
+- **BFC arena 错误识别**：异常分支新增 `bfcarena` / `allocaterawinternal` / `available memory of` 关键字检测，给出"降低识别批处理数"的中文提示
+- **高 rec_batch_num 风险说明**：batch=30 时 FusedMatMul 单次申请 ~556MB，8GB 显卡建议保持默认 6 或最高调到 10
 
 ### v1.4
 
