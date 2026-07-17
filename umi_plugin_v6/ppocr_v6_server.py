@@ -49,6 +49,11 @@ def _setup_nvidia_dlls():
 
 _use_gpu = False
 _engine = None  # 推理引擎名称（"onnxruntime" / "paddle" / None）
+_init_args = None  # 保存 init_ocr 的 args，供周期性重建 ORT session 使用
+_page_count = 0  # 已处理页数计数器，达阈值时重建 session 释放 BFC arena 碎片
+# 每 N 页重建一次 ORT session，强制释放 BFC arena 累积的显存碎片。
+# 8GB 显卡建议 50；更小显存可调小至 30，更大显存可调大到 100。
+_REBUILD_PAGE_THRESHOLD = 50
 
 
 def _cleanup_gpu_memory():
@@ -116,6 +121,41 @@ def _get_gpu_total_memory_gb():
     except Exception:
         pass
     return 8.0  # 默认 8GB
+
+
+def _rebuild_ocr():
+    """重建 ORT session，强制释放 BFC arena 累积的显存碎片。
+
+    ORT 的 BFC arena 设计上持有显存不释放（为下次 run 复用 buffer），
+    被 gpu_mem_limit 封顶后，跑几百页 PDF 会被前面页的各种形状分配占满，
+    最后几页找不到连续空间就报 BFCArena::AllocateRawInternal 错误
+    （FusedMatMul / BiasSoftmax 等大块节点申请失败）。
+
+    _cleanup_gpu_memory() 只能 gc + torch.empty_cache，对 ORT 的 arena
+    无效——必须销毁 session 才能让 arena 归还 CUDA。代价是 2~3 秒重新加载模型。
+
+    返回 True 表示重建成功，False 表示失败（调用方应给出错误提示）。
+    """
+    global _ocr, _recognizer, _page_count
+    if _init_args is None:
+        return False
+    try:
+        _ocr = None
+        _recognizer = None
+        gc.collect()
+        # ORT session 销毁后其 arena 才真正归还 CUDA，再清 torch 缓存
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+        init_ocr(_init_args)
+        _page_count = 0
+        return True
+    except Exception as e:
+        print(f"ORT session rebuild failed: {e}", file=sys.stderr, flush=True)
+        return False
 
 
 def _select_engine(use_gpu, cpu_threads=None, model_size="medium"):
@@ -207,7 +247,8 @@ def parse_config(args):
 
 
 def init_ocr(args):
-    global _ocr, _recognizer, _det, _use_gpu, _shrink_ratio, _engine
+    global _ocr, _recognizer, _det, _use_gpu, _shrink_ratio, _engine, _init_args
+    _init_args = args  # 保存以供周期性重建 ORT session 使用
     # 必须在 import paddleocr 之前添加 NVIDIA DLL 路径。
     # 否则 paddleocr/paddlex 导入过程会干扰后续 ORT CUDA 加载 cuDNN，
     # 导致 "Invalid handle. Cannot load symbol cudnnCreate" 错误。
@@ -355,92 +396,117 @@ def _validate_rec_polys(rec_polys, dt_polys, texts):
 
 
 def run_ocr(cmd):
-    global _ocr, _recognizer
+    global _ocr, _recognizer, _page_count
     if _ocr is None and _recognizer is None:
         return {"code": 901, "data": "引擎未初始化"}
-    tmp_path = None
-    try:
-        if "image_path" in cmd:
-            input_data = cmd["image_path"]
-        elif "image_base64" in cmd:
-            img_bytes = base64.b64decode(cmd["image_base64"])
-            tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-            tmp.write(img_bytes)
-            tmp.close()
-            input_data = tmp.name
-            tmp_path = tmp.name
-        else:
-            return {"code": 403, "data": "No valid tasks."}
 
-        if _det:
-            result = list(_ocr.predict(input_data))
-        else:
-            result = list(_recognizer.predict(input_data))
+    # 周期性重建 ORT session：每 N 页重建一次，强制释放 BFC arena 累积的显存碎片。
+    # 否则跑长 PDF 时 arena 会被前面页的 buffer 占满，最后几页找不到连续空间报
+    # BFCArena::AllocateRawInternal 错误（FusedMatMul / BiasSoftmax 节点申请失败）。
+    _page_count += 1
+    if _page_count >= _REBUILD_PAGE_THRESHOLD:
+        _rebuild_ocr()
 
-        # 解析结果，兼容 det（复数字段）与 rec-only（单数字段）两种输出
-        data_list = []
-        for page in result:
-            if page is None:
-                continue
-            texts = _get(page, "rec_texts", None)
-            scores = _get(page, "rec_scores", None)
-            rec_polys = _get(page, "rec_polys", None)
-            dt_polys = _get(page, "dt_polys", None)
-            if texts is None:
-                # rec-only 模式：单数标量
-                text = _get(page, "rec_text", None)
-                if text is None:
-                    continue
-                texts = [text]
-                scores = [_get(page, "rec_score", 0.0)]
-                polys = None
+    # BFC arena 失败时自动重建并重试一次。
+    # attempt=1 失败 → 重建 session → attempt=2 重跑；attempt=2 再失败则报错。
+    for attempt in (1, 2):
+        tmp_path = None
+        try:
+            if "image_path" in cmd:
+                input_data = cmd["image_path"]
+            elif "image_base64" in cmd:
+                img_bytes = base64.b64decode(cmd["image_base64"])
+                tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                tmp.write(img_bytes)
+                tmp.close()
+                input_data = tmp.name
+                tmp_path = tmp.name
             else:
-                scores = scores or []
-                # A2: 优先 rec_polys（识别阶段对齐后的框，更贴字），但需校验
-                #     其与 dt_polys 处于同一原图坐标系；不一致则回退 dt_polys，
-                #     防止某些 paddleocr 版本把 rec_polys 输出为局部裁剪框
-                # 注意：rec_polys / dt_polys 可能是 numpy 数组，不能用 `if rec_polys`
-                # 判空（触发 ValueError），须用 is not None + len() 判断
-                if rec_polys is not None and _validate_rec_polys(rec_polys, dt_polys, texts):
-                    polys = rec_polys
-                else:
-                    polys = dt_polys
-            for i, text in enumerate(texts):
-                score = float(scores[i]) if i < len(scores) else 0.0
-                if polys is not None and i < len(polys):
-                    poly = polys[i]
-                    # A1: 向重心内缩，抵消 DBNet expand_ratio，让 box 更贴字
-                    box = _shrink_poly(poly, _shrink_ratio)
-                else:
-                    box = [[0, 0], [0, 0], [0, 0], [0, 0]]
-                data_list.append({"box": box, "text": text, "score": score})
+                return {"code": 403, "data": "No valid tasks."}
 
-        if not data_list:
-            return {"code": 101, "data": f'No text found in image. Path:"{input_data}"'}
-        return {"code": 100, "data": data_list}
-    except Exception as e:
-        msg = str(e)
-        low = msg.lower()
-        if "bad allocation" in low or "out of memory" in low:
-            return {"code": 902, "data": "GPU 显存不足（bad allocation）。请降低'识别批处理数'后重试。"}
-        if "cudnn" in low or "cudaexecutionprovider" in low or "conv node" in low:
-            # cuDNN 执行失败：通常是 cuDNN/CUDA 版本与显卡驱动不兼容，
-            # 或 cuDNN 9.x FE 图 API 在特定 GPU 架构上不支持。
-            # 建议用户关闭 GPU 加速改用 CPU 模式（稳定），或更新显卡驱动。
-            return {
-                "code": 902,
-                "data": "GPU cuDNN 执行失败。请在插件设置中关闭'GPU加速'后重试，"
-                "或更新显卡驱动到最新版。详情：" + e.__class__.__name__,
-            }
-        return {"code": 902, "data": f"OCR 异常: {e}"}
-    finally:
-        # 无论成功还是异常，都清理 base64 临时文件，避免泄漏到 %TEMP%
-        if tmp_path:
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
-        _cleanup_gpu_memory()
+            if _det:
+                result = list(_ocr.predict(input_data))
+            else:
+                result = list(_recognizer.predict(input_data))
+
+            # 解析结果，兼容 det（复数字段）与 rec-only（单数字段）两种输出
+            data_list = []
+            for page in result:
+                if page is None:
+                    continue
+                texts = _get(page, "rec_texts", None)
+                scores = _get(page, "rec_scores", None)
+                rec_polys = _get(page, "rec_polys", None)
+                dt_polys = _get(page, "dt_polys", None)
+                if texts is None:
+                    # rec-only 模式：单数标量
+                    text = _get(page, "rec_text", None)
+                    if text is None:
+                        continue
+                    texts = [text]
+                    scores = [_get(page, "rec_score", 0.0)]
+                    polys = None
+                else:
+                    scores = scores or []
+                    # A2: 优先 rec_polys（识别阶段对齐后的框，更贴字），但需校验
+                    #     其与 dt_polys 处于同一原图坐标系；不一致则回退 dt_polys，
+                    #     防止某些 paddleocr 版本把 rec_polys 输出为局部裁剪框
+                    # 注意：rec_polys / dt_polys 可能是 numpy 数组，不能用 `if rec_polys`
+                    # 判空（触发 ValueError），须用 is not None + len() 判断
+                    if rec_polys is not None and _validate_rec_polys(rec_polys, dt_polys, texts):
+                        polys = rec_polys
+                    else:
+                        polys = dt_polys
+                for i, text in enumerate(texts):
+                    score = float(scores[i]) if i < len(scores) else 0.0
+                    if polys is not None and i < len(polys):
+                        poly = polys[i]
+                        # A1: 向重心内缩，抵消 DBNet expand_ratio，让 box 更贴字
+                        box = _shrink_poly(poly, _shrink_ratio)
+                    else:
+                        box = [[0, 0], [0, 0], [0, 0], [0, 0]]
+                    data_list.append({"box": box, "text": text, "score": score})
+
+            if not data_list:
+                return {"code": 101, "data": f'No text found in image. Path:"{input_data}"'}
+            return {"code": 100, "data": data_list}
+        except Exception as e:
+            msg = str(e)
+            low = msg.lower()
+            # BFC arena 显存池碎片化：rec 模型的 MatMul/Softmax 等大块节点
+            # 需要连续显存，但 arena 被前面页的 buffer 占满找不到空间。
+            # 关键字：BFCArena / AllocateRawInternal / "Available memory of"
+            is_bfc = ("bfcarena" in low or "allocaterawinternal" in low
+                      or "available memory of" in low)
+            if is_bfc:
+                if attempt == 1:
+                    # 重建 session 释放整个 arena，然后重试当前页
+                    if _rebuild_ocr():
+                        continue  # 进入 attempt=2 重跑
+                    return {"code": 902,
+                            "data": "ORT 显存池碎片化，引擎重建失败。请降低'识别批处理数'后重试。"}
+                return {"code": 902,
+                        "data": "ORT 显存池碎片化，已重建引擎仍失败。请降低'识别批处理数'后重试。"}
+            if "bad allocation" in low or "out of memory" in low:
+                return {"code": 902, "data": "GPU 显存不足（bad allocation）。请降低'识别批处理数'后重试。"}
+            if "cudnn" in low or "cudaexecutionprovider" in low or "conv node" in low:
+                # cuDNN 执行失败：通常是 cuDNN/CUDA 版本与显卡驱动不兼容，
+                # 或 cuDNN 9.x FE 图 API 在特定 GPU 架构上不支持。
+                # 建议用户关闭 GPU 加速改用 CPU 模式（稳定），或更新显卡驱动。
+                return {
+                    "code": 902,
+                    "data": "GPU cuDNN 执行失败。请在插件设置中关闭'GPU加速'后重试，"
+                    "或更新显卡驱动到最新版。详情：" + e.__class__.__name__,
+                }
+            return {"code": 902, "data": f"OCR 异常: {e}"}
+        finally:
+            # 无论成功还是异常，都清理 base64 临时文件，避免泄漏到 %TEMP%
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+            _cleanup_gpu_memory()
 
 
 def main():
