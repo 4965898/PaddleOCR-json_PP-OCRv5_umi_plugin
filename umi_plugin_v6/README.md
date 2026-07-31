@@ -1,4 +1,4 @@
-# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v1.4
+# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v1.6
 
 基于 [PaddleOCR 3.7.0](https://github.com/PaddlePaddle/PaddleOCR) + [ONNX Runtime](https://onnxruntime.ai/) 的 Umi-OCR 插件，使用最新的 **PP-OCRv6** 模型。
 
@@ -9,9 +9,11 @@
 - **自动下载模型**：首次使用时自动下载所选尺寸的 ONNX 模型到插件目录，无需手动下载
 - **两档模型**：medium（高精度）/ small（快速），可随时切换
 - **多语言识别**：PP-OCRv6 识别模型为多语言模型，可识别中英日韩等，无需按语言切换
+- **多后端 GPU 加速**：NVIDIA 显卡走 CUDA（最快，约 17 倍）；Intel Arc / AMD 等任意 DirectX 12 显卡走 DirectML；插件按已安装组件自动选择后端
+- **CPU 线程数可调**：暴露 ONNX Runtime 推理线程数设置，调小可显著降低内存占用（每线程分配独立工作区缓冲区），不影响识别精度
 - **性能优化**：开启 ONNX Runtime 图优化最高级 + 内存模式，充分利用 CPU 多核
 - **GPU 显存动态分配**：按显卡总显存自适应分配 ORT CUDA arena 上限（small 50% / medium 65%），8GB 显卡稳定在 5.8GB，不再吃满显存
-- **显存碎片防护**：每页识别后自动清理 GPU 缓存（paddle/torch），防止多页 PDF 显存累积导致 bad allocation
+- **显存碎片防护**：每页识别后自动清理 GPU 缓存（paddle/torch），每 50 页自动重建 ORT session 释放 BFC arena 碎片，防止长 PDF 末尾报 `BFCArena::AllocateRawInternal` 错误；遇到该错误时自动重建 session 并重试当前页
 - **UTF-8 编码**：修复 Windows 下中文识别乱码问题
 
 ## 环境要求
@@ -75,6 +77,16 @@ Umi-OCR/
 >
 > 留出的显存给 cuDNN workspace、CUDA context、paddle 缓存等使用，避免显存吃满导致 bad allocation 或 CUDA error 999。每页识别后还会自动清理 GPU 缓存，防止多页 PDF 显存碎片累积。
 
+> **DirectML 加速**（v1.6 新增，适用于 Intel Arc / AMD 等非 NVIDIA 显卡）：
+>
+> 没有 NVIDIA 显卡也能用 GPU 加速。DirectML 是微软的 DirectX 12 推理后端，支持 **Intel Arc 核显/独显**（如 Intel Core Ultra 5/7 125H/155H 自带 Arc Graphics）、**AMD 显卡**，以及任意 DirectX 12 GPU。
+>
+> 双击运行 `install_directml.bat`，脚本会自动安装 `onnxruntime-directml`（约 200MB，无需 CUDA/cuDNN）。
+>
+> 安装完成后，在 Umi-OCR 插件设置中勾选「启用GPU加速」即可。插件自动识别已安装的后端：**CUDA 优先 → 其次 DirectML → 无则降级 CPU**。启动后可在日志中看到 `[ppocr_v6] engine=onnxruntime, gpu_backend=directml` 确认生效。
+>
+> **注意**：`onnxruntime-directml` 与 `onnxruntime` / `onnxruntime-gpu` 互斥，同一虚拟环境只能装一个。若之前跑过 `install.bat` 或 `install_gpu.bat`，请先 `ppocr_v6_env\Scripts\pip uninstall -y onnxruntime onnxruntime-gpu`，再运行 `install_directml.bat`。NVIDIA 用户仍推荐 `install_gpu.bat`（CUDA 比 DirectML 更快）。
+
 ### 第 3 步：重启 Umi-OCR
 
 重启 Umi-OCR，在「设置 → 当前接口」选择 **PaddleOCR（PP-OCRv6）** 即可使用。
@@ -100,8 +112,10 @@ Umi-OCR/
 |--------|--------|------|
 | 限制图像边长 | 960 | 调小（如 640）可显著提速，但可能降低小字识别精度 |
 | 识别批处理数 | 6 | 调大（如 16）可提高多行文本吞吐量，不影响精度 |
+| CPU线程数 | 0（自动） | ONNX Runtime 推理线程数。0=用全部 CPU 核心；调小（如 4~8）可降低内存占用，不影响精度 |
 | 启用文本检测 | 开启 | 单行纯文本图片可关闭以跳过检测，显著加速 |
 | 纠正文本方向 | 关闭 | 识别倾斜/倒置文本时开启，会降低速度 |
+| PDF文本层精对齐 | 关闭 | 仅 PDF 双层文档场景需要。提供 0.05/0.08/0.12 预设与「自定义」浮点数输入（范围 0~0.5），推荐 0.08 |
 
 ### 性能优化建议
 
@@ -109,6 +123,16 @@ Umi-OCR/
 - **高精度需求**：选 medium + 限制图像边长 960 + 批处理数 6
 - **单行文本**：关闭「启用文本检测」可跳过检测阶段
 - 代码层面已开启 ONNX Runtime 图优化最高级 + 内存模式，无需额外配置
+
+### 内存占用优化
+
+本插件以常驻子进程方式运行，模型加载后内存会持续占用。若觉得内存偏高，可按以下方式调优（均不影响识别精度）：
+
+- **调小「CPU线程数」**（最有效）：ONNX Runtime 默认使用全部 CPU 核心，**每个线程都会分配独立的工作区缓冲区**。在核心数多的 CPU 上（如 Intel Core Ultra 5 125H 有 14 核 20 线程），这部分内存开销可观。将「CPU线程数」从默认 0（自动）改为 4~8，可显著降低内存占用，速度损失通常很小。
+- **调小「识别批处理数」**：批处理数越大，单次推理的中间张量越大。CPU 模式建议保持默认 6。
+- **调低「内存占用限制」**（全局设置）：默认 8192MB，引擎子进程 RSS 超过该值时会自动重启释放内存。内存紧张的机器可调小到 2048~4096MB。
+- **选 small 模型**：small 模型本体比 medium 小，内存占用更低，速度快约 3 倍。
+- **周期性重建**：插件每 50 页自动重建一次 ORT session 释放内存碎片（CUDA 释放 BFC arena、CPU 释放 ORT arena），长 PDF 不会内存持续上涨。DirectML 后端显存由 DX12 驱动按需分配，无需重建。
 
 ## 架构说明
 
@@ -163,9 +187,18 @@ A: 首次使用时需要下载模型（约 10-50MB），下载后缓存到本地
 A: 本插件已修复 Windows 下中文乱码问题（server 强制 UTF-8 编码）。如仍出现乱码，请确认使用的是最新版 `ppocr_v6_server.py`。
 
 ### Q: GPU 不生效？
-A: 运行 `install_gpu.bat` 一键安装 GPU 所需组件（onnxruntime-gpu + CUDA Runtime + cuDNN）。安装后 onnxruntime 会自动加载 CUDA provider。如仍不生效，检查显卡驱动是否为最新版本。无 GPU 时会自动降级到 CPU。
+A: NVIDIA 显卡运行 `install_gpu.bat` 安装 CUDA 组件；Intel Arc / AMD 等非 NVIDIA 显卡运行 `install_directml.bat` 安装 DirectML 组件。安装后在插件设置中勾选「启用GPU加速」，插件按已安装组件自动选择后端（CUDA 优先 → DirectML → CPU）。如仍不生效，检查显卡驱动是否为最新版本。启动后查看日志中的 `[ppocr_v6] engine=..., gpu_backend=...` 确认实际后端。
 
-> **显卡兼容性**：CUDA 加速仅支持 GTX 10 系列及之后的 NVIDIA 显卡。GTX 10 之前的显卡（如 GTX 9xx、7xx 等）不支持现代 CUDA/cuDNN，GPU 加速无法生效，请使用 CPU 模式，或改用旧版 PP-OCRv5 插件。
+> **显卡兼容性**：CUDA 加速仅支持 GTX 10 系列及之后的 NVIDIA 显卡。GTX 10 之前的显卡（如 GTX 9xx、7xx 等）不支持现代 CUDA/cuDNN，请改用 `install_directml.bat`（DirectML，支持任意 DX12 GPU）或 CPU 模式。
+
+### Q: 没有 NVIDIA 显卡能用 GPU 加速吗？
+A: 可以。运行 `install_directml.bat` 安装 DirectML 后端，支持 Intel Arc（含 Intel Core Ultra 核显）、AMD、以及任意 DirectX 12 GPU。在插件设置中勾选「启用GPU加速」即可，插件会自动选用 DirectML 后端。
+
+### Q: 内存占用太高怎么办？
+A: 见上文「内存占用优化」一节。最有效的办法是调小「CPU线程数」（默认 0=用全部核心，改为 4~8 可显著降低内存，不影响精度），其次调小「识别批处理数」和全局的「内存占用限制」。
+
+### Q: 「CPU线程数」有上限吗？支持多核 CPU 吗？
+A: 没有上限，支持任意核心数的 CPU（32 核、64 核均可）。该设置仅校验为非负整数，输入框无硬编码上限。但**不建议设大于物理核心数**——ONNX Runtime 的 `intra_op_num_threads` 超过物理核心数会因线程上下文切换开销而变慢，不会提速。默认 `0=自动` 已用满全部物理核心，对多核 CPU 已是吞吐最优；该设置的设计方向是「调小降内存」，而非「调大加速」。
 
 ### Q: 如何切换模型尺寸？
 A: 在 Umi-OCR 的插件设置中切换「模型尺寸」。切换后会重新加载引擎，首次使用新尺寸时需下载对应模型。
@@ -177,6 +210,30 @@ A: 在 Umi-OCR 的插件设置中切换「模型尺寸」。切换后会重新�
 - [Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) - 免费开源的 OCR 软件
 
 ## 更新日志
+
+### v1.6
+
+- **新增 DirectML 后端（Intel Arc / AMD 等 GPU 加速）**：此前 GPU 加速仅支持 NVIDIA CUDA，Intel Arc 核显（如 Intel Core Ultra 5/7 125H/155H 自带 Arc Graphics）、AMD 等显卡无法加速。新增 DirectML 后端，支持任意 DirectX 12 GPU。运行 `install_directml.bat` 安装 `onnxruntime-directml` 后，插件自动选用（CUDA 优先 → DirectML → CPU）。
+  - `_select_engine()` 新增 `DmlExecutionProvider` 分支：通过显式 `providers` 列表 + `device_type="cpu"` 绕过 paddlex `_check_device_support` 对 CUDAExecutionProvider 的强制要求（DirectML 无 CUDA EP 会被拒）；`init_ocr()` 对 DirectML 路径额外传 `device="cpu"` 确定性触发绕过。
+  - 新增全局 `_gpu_backend`（`"cuda"` / `"directml"` / `None`）区分后端。DirectML 显存由 DX12 驱动按需分配，无 BFC arena，因此跳过周期性 session 重建（避免无谓的 2~3 秒重建开销）。
+- **新增「CPU线程数」设置**（回应社区反馈"没有多线程功能设置"）：暴露 ONNX Runtime 推理线程数（`intra_op_num_threads` / `inter_op_num_threads`），0=自动（用全部 CPU 核心，默认）。调小可降低内存占用——每线程会分配独立工作区缓冲区，核心数多的 CPU（如 14 核 20 线程）开销可观。server 早已支持 `--cpu_threads` 参数，本次补齐 UI 配置（`paddleocr_config.py`）与子进程传参（`paddleocr_umi.py` ExeConfigs）。
+- **内存占用优化**（回应社区反馈"内存占用高"）：
+  - `_cleanup_gpu_memory()` 将 `gc.collect()` 前移到 `if not _use_gpu` 早退之前，CPU 模式下也回收 Python 层循环引用垃圾（numpy 结果数组等），避免长 PDF 累积导致内存上涨。
+  - 周期性 session 重建对 CPU 模式同样生效（释放 ORT CPU arena 碎片），长 PDF 内存不再持续上涨。
+  - 新增「内存占用优化」文档章节与 FAQ，给出调小 CPU 线程数 / 批处理数 / 内存占用限制等可行建议。
+- **后端可观测性**：`init_ocr()` 启动时输出 `[ppocr_v6] engine=onnxruntime, gpu_backend=...` 到 stderr（被 `ppocr_pipe` 守护线程捕获），便于用户确认 GPU 加速是否生效及实际后端。
+- 更新「启用GPU加速」设置说明，区分 NVIDIA（install_gpu.bat）与 Intel Arc/AMD（install_directml.bat）安装路径。
+
+### v1.5
+
+- **修复长 PDF 末尾 BFC arena 失败**：跑几百页英文 PDF 时，ORT 的 BFC arena 会累积前面页的 buffer 不释放（设计如此，为复用），到最后几页 `FusedMatMul` / `BiasSoftmax` 等大块节点申请不到连续显存就报 `BFCArena::AllocateRawInternal: Available memory of X is smaller than requested bytes of Y`。原 `_cleanup_gpu_memory()` 只能 `gc.collect()` + `torch.cuda.empty_cache()`，对 ORT 的 arena 无效——必须销毁 session 才能让 arena 归还 CUDA。
+  - 新增 `_rebuild_ocr()`：销毁并重建 ORT session，强制释放整个 arena（代价 2~3 秒重新加载模型）
+  - **周期性重建**：每 50 页自动重建一次（8GB 显卡阈值；更小显存可调小至 30，更大可调到 100）
+  - **错误自动恢复**：检测到 BFC arena 错误时自动重建 session 并重试当前页一次
+  - `init_ocr()` 新增 `_init_args` 保存，供重建复用
+- **BFC arena 错误识别**：异常分支新增 `bfcarena` / `allocaterawinternal` / `available memory of` 关键字检测，给出"降低识别批处理数"的中文提示
+- **高 rec_batch_num 风险说明**：batch=30 时 FusedMatMul 单次申请 ~556MB，8GB 显卡建议保持默认 6 或最高调到 10
+- **PDF文本层精对齐支持自定义数值**：「PDF文本层精对齐」下拉框新增「自定义」选项，选中后显示浮点数输入框（范围 0~0.5，默认 0.08），可输入任意精度比例值，不再局限于 0.05/0.08/0.12 三个预设
 
 ### v1.4
 
