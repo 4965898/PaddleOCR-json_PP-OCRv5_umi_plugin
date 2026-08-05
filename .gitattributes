@@ -1,0 +1,5 @@
+# Windows 批处理脚本必须使用 CRLF 换行 + GBK 编码，否则 cmd.exe 的
+# if/for 多行块解析会错乱。标记为 binary 让 git 不做任何换行/编码转换，
+# 确保从 GitHub 下载 zip 时文件保持 CRLF。
+*.bat binary
+*.cmd binary
