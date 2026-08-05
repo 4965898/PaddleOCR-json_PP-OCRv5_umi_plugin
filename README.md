@@ -1,4 +1,4 @@
-# UmiOCR PP-OCRv6 ONNX Plugin（v1.6）
+# UmiOCR PP-OCRv6 ONNX Plugin（v1.7）
 
 本仓库包含两个版本的 Umi-OCR PaddleOCR 插件：
 
@@ -64,11 +64,32 @@ Umi-OCR/
 
 > **GPU 加速**（可选，推荐 NVIDIA 显卡用户使用）：
 >
-> **显卡要求**：CUDA 加速仅支持 **GTX 10 系列及之后**的 NVIDIA 显卡（如 GTX 1050/1060/1070/1080、RTX 20/30/40/50 系列等）。GTX 10 之前的显卡（如 GTX 9xx、7xx、6xx 等）不支持本插件依赖的现代 CUDA/cuDNN 运行库，无法启用 GPU 加速。此类老显卡用户建议使用 CPU 模式，或改用 `install_directml.bat`（DirectML，支持任意 DX12 GPU）。
+> **GPU 加速所需环境（NVIDIA CUDA 路径）**：
 >
-> 如需 GPU 加速，双击运行 `install_gpu.bat`，脚本会自动安装 `onnxruntime-gpu` + CUDA Runtime + cuDNN（约 1.6GB），无需手动下载任何文件。
+> | 组件 | 要求 | 说明 |
+> |------|------|------|
+> | **NVIDIA 显卡** | GTX 10 系列及之后 | GTX 1050+、RTX 20/30/40/50 系列等。GTX 10 之前（如 GTX 9xx/7xx）不支持现代 CUDA/cuDNN |
+> | **NVIDIA 显卡驱动** | **R525 或更高**（Windows） | 驱动版本过低是 GPU 不生效的最常见原因！[驱动下载](https://www.nvidia.com/Download/index.aspx) |
+> | CUDA Runtime 12.x | 自动安装 | 由 `install_gpu.bat` 通过 pip 安装 `nvidia-cuda-runtime-cu12`，**无需手动安装 CUDA Toolkit** |
+> | cuDNN 9.x | 自动安装 | 由 `install_gpu.bat` 通过 pip 安装 `nvidia-cudnn-cu12`，**无需手动下载 cuDNN** |
+> | onnxruntime-gpu | 自动安装 | 由 `install_gpu.bat` 安装，包含 CUDA Execution Provider |
+>
+> **重要**：`install_gpu.bat` 会自动通过 pip 安装 CUDA Runtime 和 cuDNN 运行库（约 1.6GB），**无需手动安装 NVIDIA CUDA Toolkit 或 cuDNN**。只需确保显卡驱动为最新版本（R525+）。
+>
+> 双击运行 `install_gpu.bat`，脚本会自动：
+> 1. 卸载可能冲突的 CPU 版 `onnxruntime`
+> 2. 安装 `onnxruntime-gpu` + CUDA Runtime + cuDNN（约 1.6GB）
+> 3. 验证 CUDAExecutionProvider 是否可用
 >
 > 安装完成后，在 Umi-OCR 插件设置中勾选「启用GPU加速」即可。
+>
+> **如何确认 GPU 正在工作**：启动后查看 Umi-OCR 日志，应看到：
+> ```
+> [ppocr_v6] engine=onnxruntime, gpu_backend=cuda
+> [ppocr_v6] GPU verified: det model session uses ['CUDAExecutionProvider', ...]
+> [ppocr_v6] GPU verified: rec model session uses ['CUDAExecutionProvider', ...]
+> ```
+> 如果看到 `gpu_backend=None` 或 CPU fallback 警告，说明 GPU 未生效，请按下方「常见问题」排查。
 >
 > **性能对比**（RTX 3070 Ti Laptop，medium 模型，4 行中文）：
 >
@@ -197,8 +218,30 @@ A: 首次使用时需要下载模型（约 10-50MB），下载后缓存到本地
 ### Q: 中文识别乱码？
 A: 本插件已修复 Windows 下中文乱码问题（server 强制 UTF-8 编码）。如仍出现乱码，请确认使用的是最新版 `ppocr_v6_server.py`。
 
-### Q: GPU 不生效？
-A: NVIDIA 显卡运行 `install_gpu.bat` 安装 CUDA 组件；Intel Arc / AMD 等非 NVIDIA 显卡运行 `install_directml.bat` 安装 DirectML 组件。安装后在插件设置中勾选「启用GPU加速」，插件按已安装组件自动选择后端（CUDA 优先 → DirectML → CPU）。如仍不生效，检查显卡驱动是否为最新版本。启动后查看日志中的 `[ppocr_v6] engine=..., gpu_backend=...` 确认实际后端。
+### Q: GPU 不生效？打开硬件加速后速度没有明显提升？
+A: 这通常是因为 CUDA/cuDNN 运行库未正确加载，ORT 静默回退到了 CPU 模式。请按以下步骤排查：
+
+1. **检查日志**：启动后查看 Umi-OCR 日志（或 stderr 输出），找到 `[ppocr_v6] engine=..., gpu_backend=...` 行：
+   - `gpu_backend=cuda` + `GPU verified: ... session uses ['CUDAExecutionProvider', ...]` → GPU 正在工作
+   - `gpu_backend=None` + WARNING → **GPU 未生效**，按以下步骤修复
+
+2. **更新显卡驱动**（最常见原因）：CUDA 12.x 运行库需要 NVIDIA 驱动 **R525 或更高版本**。旧驱动会导致 CUDA DLL 加载失败，ORT 静默回退到 CPU。请到 [NVIDIA 驱动下载页](https://www.nvidia.com/Download/index.aspx) 更新到最新驱动。
+
+3. **重新运行 `install_gpu.bat`**：脚本会自动卸载冲突的 CPU 版 `onnxruntime`，重新安装 `onnxruntime-gpu` + CUDA Runtime + cuDNN，并验证 CUDAExecutionProvider 是否可用。
+
+4. **检查 onnxruntime 版本**：在 `ppocr_v6_env` 中运行 `pip list | findstr onnxruntime`，确认安装的是 `onnxruntime-gpu`（而非 `onnxruntime`）。两者互斥，同时安装会导致冲突。如需手动修复：
+   ```
+   ppocr_v6_env\Scripts\pip uninstall -y onnxruntime onnxruntime-gpu
+   ppocr_v6_env\Scripts\pip install "onnxruntime-gpu[cuda,cudnn]"
+   ```
+
+5. **验证 CUDA 可用性**：
+   ```
+   ppocr_v6_env\Scripts\python -c "import onnxruntime as ort; print(ort.get_available_providers())"
+   ```
+   输出应包含 `CUDAExecutionProvider`。如果没有，说明 CUDA/cuDNN DLL 加载失败，请更新驱动后重试。
+
+> **注意**：即使 GPU 正常工作，OCR 模型的 GPU 利用率也可能较低（1-10%），因为 OCR 推理的计算量相对较小，大部分时间花在 CPU 端的图像预处理和后处理上。这是正常现象——GPU 加速的效果体现在总耗时减少，而非 GPU 占用率高。
 
 > **显卡兼容性**：CUDA 加速仅支持 GTX 10 系列及之后的 NVIDIA 显卡。GTX 10 之前的显卡（如 GTX 9xx、7xx 等）不支持现代 CUDA/cuDNN，请改用 `install_directml.bat`（DirectML，支持任意 DX12 GPU）或 CPU 模式。
 
@@ -221,6 +264,18 @@ A: 在 Umi-OCR 的插件设置中切换「模型尺寸」。切换后会重新�
 - [Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) - 免费开源的 OCR 软件
 
 ## 更新日志
+
+### v1.7
+
+- **修复 GPU 加速静默回退到 CPU 的问题**（回应 issue #10：用户反馈"打开硬件加速速度也不明显"，CPU 占用 77% 而 GPU 占用仅 1-3%，根因是 CUDA/cuDNN 运行库未正确加载，ORT 静默回退到 CPU 但用户无从知晓）：
+  - **`_select_engine()` 新增 GPU 不可用警告**：当 `use_gpu=True` 但 `CUDAExecutionProvider` 和 `DmlExecutionProvider` 均不可用时，输出醒目的多行 WARNING 到 stderr，列出 available providers、回退到 CPU 的事实、以及修复方法（运行 install_gpu.bat / install_directml.bat + 更新显卡驱动）。
+  - **新增 `_verify_gpu_session()`**：在 `init_ocr()` 末尾 best-effort 访问 paddlex 内部 `ONNXRuntimeRunner.session.get_providers()`，验证 ORT session **实际**使用的 providers（而非全局可用列表）。即使 `get_available_providers()` 报告 CUDA 可用，session 创建时也可能因 DLL 版本不匹配等原因静默回退到 CPU——此检查让回退变得可见。验证成功输出 `GPU verified: ... session uses ['CUDAExecutionProvider', ...]`，失败输出醒目 WARNING。
+- **改进 `install_gpu.bat`**：
+  - 安装前自动卸载冲突的 CPU 版 `onnxruntime`（`pip uninstall -y onnxruntime`），避免两者同时存在导致 ORT 加载错误的 DLL。
+  - 显示显卡驱动版本和型号（`nvidia-smi --query-gpu=driver_version,name`），便于用户确认驱动是否满足 CUDA 12.x 的 R525+ 要求。
+  - 安装后验证 CUDAExecutionProvider 真正可用（`exit(0 if 'CUDAExecutionProvider' in ps else 1)`），不可用时给出明确的错误提示和修复建议，而非静默继续。
+  - 提示用户在 Umi-OCR 日志中查找 `[ppocr_v6] GPU verified: ...` 确认 GPU 生效。
+- **更新 GPU 加速文档**：README 新增「GPU 加速所需环境」表格，明确列出 NVIDIA 显卡、显卡驱动（R525+）、CUDA Runtime 12.x、cuDNN 9.x、onnxruntime-gpu 五项要求及来源；FAQ「GPU 不生效？」改为分步骤排查指南（检查日志 → 更新驱动 → 重新安装 → 检查 pip 包 → 验证 CUDA）。
 
 ### v1.6
 

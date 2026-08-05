@@ -169,7 +169,7 @@ def _select_engine(use_gpu, cpu_threads=None, model_size="medium"):
     engine_config 会原样传给 ORT InferenceSession。
 
     注意：mkldnn（oneDNN）是 paddlepaddle 的 CPU 加速后端，对 onnxruntime 无效。
-    onnxruntime CPU 使用自带的 MLAS 优化库；这里通过开启图优化最高级、内存模式
+    onnxruntime CPU 使用自有的 MLAS 优化库；这里通过开启图优化最高级、内存模式
     与显式线程数来提升 CPU 推理速度（无需下载任何额外文件）。
     """
     global _gpu_backend
@@ -178,8 +178,30 @@ def _select_engine(use_gpu, cpu_threads=None, model_size="medium"):
         import onnxruntime as ort
     except ImportError:
         _gpu_backend = None
+        if use_gpu:
+            print("[ppocr_v6] WARNING: use_gpu=True but onnxruntime is not installed. "
+                  "GPU acceleration unavailable, falling back to CPU. "
+                  "Please run install_gpu.bat (NVIDIA) or install_directml.bat (Intel/AMD).",
+                  file=sys.stderr, flush=True)
         return None, None
     providers = ort.get_available_providers()
+    if use_gpu and "CUDAExecutionProvider" not in providers and "DmlExecutionProvider" not in providers:
+        # 用户请求 GPU 但没有任何 GPU EP 可用——给出醒目警告，避免用户以为
+        # GPU 已生效却看不到加速效果（issue #10：用户反馈"打开硬件加速速度也不明显"，
+        # 根因是 CUDA/cuDNN 运行库未正确安装，ORT 静默回退到 CPU）。
+        print("=" * 70, file=sys.stderr, flush=True)
+        print("[ppocr_v6] WARNING: GPU acceleration requested (use_gpu=True) but "
+              "NO GPU ExecutionProvider is available!", file=sys.stderr, flush=True)
+        print(f"[ppocr_v6] Available providers: {providers}", file=sys.stderr, flush=True)
+        print("[ppocr_v6] Falling back to CPU mode. GPU will NOT be used.", file=sys.stderr, flush=True)
+        print("[ppocr_v6] To fix this:", file=sys.stderr, flush=True)
+        print("[ppocr_v6]   NVIDIA GPU: run install_gpu.bat to install onnxruntime-gpu + CUDA + cuDNN",
+              file=sys.stderr, flush=True)
+        print("[ppocr_v6]   Intel/AMD GPU: run install_directml.bat to install onnxruntime-directml",
+              file=sys.stderr, flush=True)
+        print("[ppocr_v6]   Also ensure your GPU driver supports CUDA 12.x (NVIDIA) or DirectX 12 (Intel/AMD)",
+              file=sys.stderr, flush=True)
+        print("=" * 70, file=sys.stderr, flush=True)
     if use_gpu and "CUDAExecutionProvider" in providers:
         # GPU 模式 —— NVIDIA CUDA 后端
         _gpu_backend = "cuda"
@@ -263,6 +285,66 @@ def _select_engine(use_gpu, cpu_threads=None, model_size="medium"):
         cfg["intra_op_num_threads"] = cpu_threads
         cfg["inter_op_num_threads"] = cpu_threads
     return "onnxruntime", cfg
+
+
+def _verify_gpu_session(ocr_or_recognizer, det=True):
+    """初始化后验证 ORT session 是否真正使用了 GPU ExecutionProvider。
+
+    paddlex 内部的 ONNXRuntimeRunner 会持有 InferenceSession 对象，其
+    get_providers() 返回 session 实际使用的 providers（而非全局可用列表）。
+    若 CUDA EP 在 import 时可用但 session 创建时静默回退到 CPU（如 DLL
+    版本不匹配、驱动过旧），此处会检测到并给出醒目警告。
+
+    访问路径（paddlex 3.7.x 内部结构，best-effort，失败则静默跳过）：
+      PaddleOCR.paddlex_pipeline._pipeline.text_det_model._predictor._runner.session
+      PaddleOCR.paddlex_pipeline._pipeline.text_rec_model._predictor._runner.session
+      TextRecognition.paddlex_pipeline._pipeline.text_rec_model._predictor._runner.session
+
+    issue #10：用户反馈"打开硬件加速速度也不明显"，根因是 CUDA/cuDNN 未正确
+    安装，ORT 静默回退到 CPU。此函数让回退变得可见。
+    """
+    try:
+        pipeline = ocr_or_recognizer.paddlex_pipeline
+        # _OCRPipeline 才有 text_det_model / text_rec_model；外层包装器可能没有
+        inner = getattr(pipeline, "_pipeline", pipeline)
+        model_attrs = []
+        if det and hasattr(inner, "text_det_model"):
+            model_attrs.append(("det", inner.text_det_model))
+        if hasattr(inner, "text_rec_model"):
+            model_attrs.append(("rec", inner.text_rec_model))
+        for label, model in model_attrs:
+            pred = getattr(model, "_predictor", None)
+            if pred is None:
+                continue
+            runner = getattr(pred, "_runner", None)
+            if runner is None:
+                continue
+            session = getattr(runner, "session", None)
+            if session is None or not hasattr(session, "get_providers"):
+                continue
+            actual = session.get_providers()
+            if _gpu_backend in ("cuda", "directml"):
+                expected = ("CUDAExecutionProvider" if _gpu_backend == "cuda"
+                            else "DmlExecutionProvider")
+                if expected in actual:
+                    print(f"[ppocr_v6] GPU verified: {label} model session uses {actual}",
+                          file=sys.stderr, flush=True)
+                else:
+                    print("=" * 70, file=sys.stderr, flush=True)
+                    print(f"[ppocr_v6] WARNING: GPU backend={_gpu_backend} was requested, "
+                          f"but {label} model session fell back to CPU!", file=sys.stderr, flush=True)
+                    print(f"[ppocr_v6] Session providers: {actual}", file=sys.stderr, flush=True)
+                    print("[ppocr_v6] This usually means CUDA/cuDNN DLLs failed to load at "
+                          "session creation time.", file=sys.stderr, flush=True)
+                    print("[ppocr_v6] Please check:", file=sys.stderr, flush=True)
+                    print("[ppocr_v6]   1. GPU driver is up-to-date (NVIDIA: supports CUDA 12.x)",
+                          file=sys.stderr, flush=True)
+                    print("[ppocr_v6]   2. Re-run install_gpu.bat to reinstall CUDA/cuDNN runtime",
+                          file=sys.stderr, flush=True)
+                    print("=" * 70, file=sys.stderr, flush=True)
+    except Exception:
+        # 内部结构访问失败时静默跳过——不影响正常推理流程
+        pass
 
 
 def parse_config(args):
@@ -368,6 +450,13 @@ def init_ocr(args):
             rec_args["model_name"] = rec_model
         rec_args.update(engine_kwargs)
         _recognizer = TextRecognition(**rec_args)
+
+    # 验证 ORT session 是否真正使用了 GPU EP（issue #10）。
+    # _select_engine 已检查 get_available_providers()，但 session 创建时可能
+    # 因 DLL 版本不匹配等原因静默回退到 CPU。此处 best-effort 检查实际 providers，
+    # 让用户能从日志确认 GPU 是否真正生效。
+    if _engine == "onnxruntime" and _gpu_backend:
+        _verify_gpu_session(_ocr if _ocr else _recognizer, det=det)
 
 
 def _get(page, key, default=None):
