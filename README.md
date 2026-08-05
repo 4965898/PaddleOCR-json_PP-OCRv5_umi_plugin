@@ -30,7 +30,7 @@
 ## 环境要求
 
 - **Umi-OCR**：Paddle v2.1.5 及以上
-- **Python**：3.10+（需添加到系统 PATH，用于创建虚拟环境）
+- **Python**：**无需预装**（install.bat 会自动下载便携 Python）；如已安装 Python 3.10+ 则直接使用
 - **操作系统**：Windows 10/11 x64
 - **磁盘空间**：约 500MB（虚拟环境 + 模型文件）
 
@@ -54,13 +54,17 @@ Umi-OCR/
                 └── config_small.txt
 ```
 
-### 第 2 步：安装环境
+### 第 2 步：安装环境（开箱即用，无需预装 Python）
 
-双击运行 `install.bat`，脚本会自动：
-1. 创建 Python 虚拟环境 `ppocr_v6_env`
-2. 安装 `paddleocr` + `onnxruntime` 依赖
+双击运行 `install.bat`，脚本会自动完成全部安装：
+1. **检测系统 Python**：有则直接使用
+2. **无 Python 时自动下载**：通过 [uv](https://github.com/astral-sh/uv) 自动下载便携 Python 3.11（约 30MB），无需手动安装
+3. 创建虚拟环境 `ppocr_v6_env`
+4. 安装 `paddleocr` + `onnxruntime` 依赖（约 200MB）
 
-安装约需 1-3 分钟（取决于网速）。
+安装约需 1-5 分钟（取决于网速；无 Python 时首次多下 30MB）。
+
+> 新手只需双击 `install.bat` 等待完成即可，全程无需命令行操作。
 
 > **GPU 加速**（可选，推荐 NVIDIA 显卡用户使用）：
 >
@@ -267,6 +271,7 @@ A: 在 Umi-OCR 的插件设置中切换「模型尺寸」。切换后会重新�
 
 ### v1.7
 
+- **开箱即用：无需预装 Python**（降低新手使用门槛）：`install.bat` 增强为开箱即用模式——检测到系统无 Python 时，自动通过 [uv](https://github.com/astral-sh/uv) 下载便携 Python 3.11（约 30MB）并创建虚拟环境，用户无需手动安装 Python。已有系统 Python 时直接使用。新手只需双击 `install.bat` 等待完成即可，全程零命令行操作。
 - **修复 GPU 加速静默回退到 CPU 的问题**（回应 issue #10：用户反馈"打开硬件加速速度也不明显"，CPU 占用 77% 而 GPU 占用仅 1-3%，根因是 CUDA/cuDNN 运行库未正确加载，ORT 静默回退到 CPU 但用户无从知晓）：
   - **`_select_engine()` 新增 GPU 不可用警告**：当 `use_gpu=True` 但 `CUDAExecutionProvider` 和 `DmlExecutionProvider` 均不可用时，输出醒目的多行 WARNING 到 stderr，列出 available providers、回退到 CPU 的事实、以及修复方法（运行 install_gpu.bat / install_directml.bat + 更新显卡驱动）。
   - **新增 `_verify_gpu_session()`**：在 `init_ocr()` 末尾 best-effort 访问 paddlex 内部 `ONNXRuntimeRunner.session.get_providers()`，验证 ORT session **实际**使用的 providers（而非全局可用列表）。即使 `get_available_providers()` 报告 CUDA 可用，session 创建时也可能因 DLL 版本不匹配等原因静默回退到 CPU——此检查让回退变得可见。验证成功输出 `GPU verified: ... session uses ['CUDAExecutionProvider', ...]`，失败输出醒目 WARNING。

@@ -6,14 +6,17 @@ echo  (Intel Arc / AMD / any DirectX 12 GPU)
 echo ========================================
 echo.
 
-REM Check Python
-where python >nul 2>nul
-if errorlevel 1 (
-    echo [ERROR] Python not found. Please install Python 3.10+ and add to PATH.
-    echo Download: https://www.python.org/downloads/
-    echo.
-    pause
-    exit /b 1
+REM Check Python: venv must exist (created by install.bat) or system Python available
+if not exist "ppocr_v6_env\Scripts\python.exe" (
+    where python >nul 2>nul
+    if errorlevel 1 (
+        echo [ERROR] 未检测到 Python，且虚拟环境不存在。
+        echo         请先运行 install.bat 完成基础安装（开箱即用，无需预装 Python），
+        echo         再运行本脚本升级 DirectML 支持。
+        echo.
+        pause
+        exit /b 1
+    )
 )
 
 REM Check for a DirectX 12 GPU (Intel Arc / AMD / NVIDIA all supported)
