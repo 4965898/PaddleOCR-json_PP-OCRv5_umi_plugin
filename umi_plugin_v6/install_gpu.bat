@@ -1,5 +1,4 @@
 @echo off
-chcp 65001 >nul
 echo ========================================
 echo  PP-OCRv6 ONNX Runtime Plugin - GPU Setup
 echo ========================================
@@ -9,9 +8,9 @@ REM Check Python: venv must exist (created by install.bat) or system Python avai
 if not exist "ppocr_v6_env\Scripts\python.exe" (
     where python >nul 2>nul
     if errorlevel 1 (
-        echo [ERROR] æœªæ£€æµ‹åˆ° Pythonï¼Œä¸”è™šæ‹ŸçŽ¯å¢ƒä¸å­˜åœ¨ã€‚
-        echo         è¯·å…ˆè¿è¡Œ install.bat å®ŒæˆåŸºç¡€å®‰è£…ï¼ˆå¼€ç®±å³ç”¨ï¼Œæ— éœ€é¢„è£… Pythonï¼‰ï¼Œ
-        echo         å†è¿è¡Œæœ¬è„šæœ¬å‡çº§ GPU æ”¯æŒã€‚
+        echo [ERROR] Î´¼ì²âµ½ Python£¬ÇÒÐéÄâ»·¾³²»´æÔÚ¡£
+        echo         ÇëÏÈÔËÐÐ install.bat Íê³É»ù´¡°²×°£¨¿ªÏä¼´ÓÃ£¬ÎÞÐèÔ¤×° Python£©£¬
+        echo         ÔÙÔËÐÐ±¾½Å±¾Éý¼¶ GPU Ö§³Ö¡£
         echo.
         pause
         exit /b 1
