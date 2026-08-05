@@ -111,6 +111,8 @@ Umi-OCR/
 > 安装完成后，在 Umi-OCR 插件设置中勾选「启用GPU加速」即可。插件自动识别已安装的后端：**CUDA 优先 → 其次 DirectML → 无则降级 CPU**。启动后可在日志中看到 `[ppocr_v6] engine=onnxruntime, gpu_backend=directml` 确认生效。
 >
 > **注意**：`onnxruntime-directml` 与 `onnxruntime` / `onnxruntime-gpu` 互斥，同一虚拟环境只能装一个。若之前跑过 `install.bat` 或 `install_gpu.bat`，请先 `ppocr_v6_env\Scripts\pip uninstall -y onnxruntime onnxruntime-gpu`，再运行 `install_directml.bat`。NVIDIA 用户仍推荐 `install_gpu.bat`（CUDA 比 DirectML 更快）。
+>
+> **关于 Vulkan**：ONNX Runtime 官方未提供 Vulkan Execution Provider，因此本插件无法像 ncnn 引擎那样支持 Vulkan。但在 Windows 上，**DirectML 已等价实现 Vulkan 的跨厂商 GPU 加速目标**——两者都支持 N卡/A卡/Intel Arc/核显，区别仅在于 Vulkan 跨平台（Linux/macOS）且零依赖，而 DirectML 仅限 Windows 且需装 onnxruntime-directml。本插件为 Windows-only，DirectML 已足够覆盖。
 
 ### 第 3 步：重启 Umi-OCR
 

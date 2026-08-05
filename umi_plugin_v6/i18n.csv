@@ -35,3 +35,10 @@ PDF文本层精对齐,PDF text layer alignment,PDF文本層精對齊,PDFテキ�
 将检测框向内收缩，抵消 DBNet 的 expand_ratio，让 box 更贴合真实文字范围。可改善扫描 PDF 生成的双层 layered.pdf 中文本层与图像的对齐（det 框默认会比真实文字外扩一圈，导致字号被高估、行末字符超出图像文字）。仅 PDF 双层文档场景需要，其他场景可保持关闭。,"Shrink detection boxes inward to cancel DBNet's expand_ratio so boxes fit actual text more tightly. Improves alignment between text layer and image in layered.pdf generated from scanned PDFs (det boxes are slightly larger than actual text, causing overestimated font size and text overflow). Only needed for PDF dual-layer documents; can stay off otherwise.",將檢測框向內收縮，抵消 DBNet 的 expand_ratio，讓 box 更貼合真實文字範圍。可改善掃描 PDF 生成的雙層 layered.pdf 中文本層與圖像的對齊（det 框默認會比真實文字外擴一圈，導致字號被高估、行末字符超出圖像文字）。僅 PDF 雙層文檔場景需要，其他場景可保持關閉。,検出ボックスを内側に収縮し、DBNetのexpand_ratioを打ち消してboxを実際の文字範囲に近づけます。スキャンPDFから生成したレイヤーPDFでテキスト層と画像の整列を改善します（detボックスは実際の文字より一回り大きく、フォントサイズが過大評価され行末文字が画像からはみ出す原因）。PDFレイヤー文書場面のみ必要、その他の場面ではオフのままで構いません。
 自定义精对齐比例,Custom alignment ratio,自定義精對齊比例,カスタム整列比率
 当「PDF文本层精对齐」选择「自定义」时生效。典型值 0.08，范围 0.02~0.20。0=关闭。,"Effective when ""PDF text layer alignment"" is ""Custom"". Typical value 0.08. Range 0.02~0.20. 0=off.",當「PDF文本層精對齊」選擇「自定義」時生效。典型值 0.08，範圍 0.02~0.20。0=關閉。,「PDFテキスト層の高精度整列」で「カスタム」を選択した場合に有効です。典型的な値は 0.08、範囲 0.02~0.20。0=オフ。
+高精度（medium）,High accuracy (medium),高精度（medium）,高精度（medium）
+快速（small）,Fast (small),快速（small）,高速（small）
+[VerticalText] 重排序: {0}项 -> {1}项, {2}列, 阈值={3:.1f},"[VerticalText] Reorder: {0} items -> {1} items, {2} columns, threshold={3:.1f}","[VerticalText] 重排序: {0}項 -> {1}項, {2}列, 閾值={3:.1f}","[VerticalText] 再整列: {0}項 -> {1}項, {2}列, 閾値={3:.1f}"
+[VerticalText] 启用竖排重排序, {0}个文本块,"[VerticalText] Vertical reorder enabled, {0} text blocks","[VerticalText] 啟用豎排重排序, {0}個文本塊","[VerticalText] 縦書き再整列を有効化, {0}個テキストブロック"
+[Error] 引擎路径不存在: "{0}","[Error] Engine path does not exist: ""{0}""","[Error] 引擎路徑不存在: ""{0}""","[Error] エンジンパスが存在しません: ""{0}"""
+[Error] OCR 初始化失败。配置: {0}; {1},"[Error] OCR init failed. Config: {0}; {1}","[Error] OCR 初始化失敗。配置: {0}; {1}","[Error] OCR 初期化失敗。設定: {0}; {1}"
+重启引擎失败: {0},Engine restart failed: {0},重啟引擎失敗: {0},エンジン再起動失敗: {0}

@@ -29,8 +29,8 @@ localOptions = {
     "language": {
         "title": tr("模型尺寸"),
         "optionsList": [
-            ["models/config_medium.txt", "高精度（medium）"],
-            ["models/config_small.txt", "快速（small）"],
+            ["models/config_medium.txt", tr("高精度（medium）")],
+            ["models/config_small.txt", tr("快速（small）")],
         ],
         "toolTip": tr("PP-OCRv6 识别模型为多语言模型，可识别中英日韩等，无需按语言切换。medium 精度高，small 速度快。首次使用时自动下载对应模型到插件目录。"),
     },

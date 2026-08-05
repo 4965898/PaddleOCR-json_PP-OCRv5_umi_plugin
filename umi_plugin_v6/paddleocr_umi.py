@@ -1,4 +1,5 @@
 from call_func import CallFunc
+from plugin_i18n import Translator
 
 from .ppocr_pipe import PPOCR_pipe
 
@@ -7,6 +8,9 @@ import logging
 import psutil
 
 logger = logging.getLogger("Umi-OCR")
+
+# i18n：与 paddleocr_config.py 共用同一份 i18n.csv
+tr = Translator(__file__, "i18n.csv")
 
 # 关键：使用 .bat 代替 .exe
 ExePath = os.path.dirname(os.path.abspath(__file__)) + "/PaddleOCR-json.bat"
@@ -71,14 +75,14 @@ def _reorderVertical(data):
         col.sort(key=lambda x: x[1])
         for cx, cy, item in col:
             result.append(item)
-    logger.info(f"[VerticalText] 重排序: {len(data)}项 -> {len(result)}项, {len(columns)}列, 阈值={threshold:.1f}")
+    logger.info(tr("[VerticalText] 重排序: {0}项 -> {1}项, {2}列, 阈值={3:.1f}").format(len(data), len(result), len(columns), threshold))
     return result
 
 
 class Api:
     def __init__(self, globalArgd):
         if not os.path.exists(ExePath):
-            raise ValueError(f'[Error] Exe path "{ExePath}" does not exist.')
+            raise ValueError(tr('[Error] 引擎路径不存在: "{0}"').format(ExePath))
         self.api = None
         self.exeConfigs = {}
         self.launchConfigs = {}
@@ -142,7 +146,7 @@ class Api:
             return res
         if not isinstance(res.get("data"), list):
             return res
-        logger.info(f"[VerticalText] 启用竖排重排序, {len(res['data'])}个文本块")
+        logger.info(tr("[VerticalText] 启用竖排重排序, {0}个文本块").format(len(res['data'])))
         res["data"] = _reorderVertical(res["data"])
         return res
 
@@ -162,7 +166,7 @@ class Api:
             self.launchConfigs = tempConfigs
         except Exception as e:
             self.api = None
-            return f"[Error] OCR init fail. Argd: {tempConfigs}\n{e}"
+            return tr("[Error] OCR 初始化失败。配置: {0}; {1}").format(tempConfigs, e)
         self.engineSign = newSign
         return ""
 
@@ -202,7 +206,7 @@ class Api:
             self.api = PPOCR_pipe(ExePath, self.launchConfigs)
         except Exception as e:
             self.api = None
-            logger.error(f"重启引擎失败: {e}")
+            logger.error(tr("重启引擎失败: {0}").format(e))
 
     def __ramClear(self):
         if self.ramInfo["max"] > 0:
