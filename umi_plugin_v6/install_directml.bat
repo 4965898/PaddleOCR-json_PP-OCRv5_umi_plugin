@@ -1,4 +1,6 @@
 @echo off
+title PP-OCRv6 ONNX Runtime Plugin - DirectML Setup
+cd /d "%~dp0"
 echo ========================================
 echo  PP-OCRv6 ONNX Runtime Plugin - DirectML Setup
 echo  (Intel Arc / AMD / any DirectX 12 GPU)
@@ -27,7 +29,6 @@ echo [INFO] DirectML supports Intel Arc, AMD, and NVIDIA DX12 GPUs.
 echo        NVIDIA users may prefer install_gpu.bat (CUDA) for best performance.
 echo.
 
-cd /d "%~dp0"
 
 if not exist "ppocr_v6_env\Scripts\python.exe" (
     echo [1/2] Creating virtual environment ppocr_v6_env ...

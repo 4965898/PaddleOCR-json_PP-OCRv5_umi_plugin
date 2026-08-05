@@ -1,4 +1,6 @@
 @echo off
+title PP-OCRv6 ONNX Runtime Plugin - GPU Setup
+cd /d "%~dp0"
 echo ========================================
 echo  PP-OCRv6 ONNX Runtime Plugin - GPU Setup
 echo ========================================
@@ -38,7 +40,6 @@ echo [OK] NVIDIA GPU detected
 nvidia-smi --query-gpu=driver_version,name --format=csv,noheader 2>nul
 echo.
 
-cd /d "%~dp0"
 
 if not exist "ppocr_v6_env\Scripts\python.exe" (
     echo [1/4] Creating virtual environment ppocr_v6_env ...
