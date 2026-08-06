@@ -50,7 +50,7 @@ if errorlevel 1 goto :install_fail
 
 echo.
 echo [4/4] Verifying GPU support (creating test CUDA session)...
-ppocr_v6_env\Scripts\python -c "import sysconfig,os;[os.add_dll_directory(os.path.join(sysconfig.get_paths()['purelib'],'nvidia',s,'bin')) for s in os.listdir(os.path.join(sysconfig.get_paths()['purelib'],'nvidia')) if os.path.isdir(os.path.join(sysconfig.get_paths()['purelib'],'nvidia',s,'bin'))] if os.path.isdir(os.path.join(sysconfig.get_paths()['purelib'],'nvidia')) else None;import onnxruntime as ort;ps=ort.get_available_providers();print('Available providers:',ps);exit(0 if 'CUDAExecutionProvider' in ps else 1)"
+ppocr_v6_env\Scripts\python verify_gpu.py
 if errorlevel 1 goto :cuda_fail
 echo [OK] CUDAExecutionProvider is available!
 
@@ -75,9 +75,9 @@ pause
 exit /b 0
 
 :no_python
-echo [ERROR] 未检测到 Python，且虚拟环境不存在�?
-echo         请先运行 install.bat 完成基础安装（开箱即用，无需预装 Python），
-echo         再运行本脚本升级 GPU 支持�?
+echo [ERROR] Python not found and virtual environment does not exist.
+echo         Please run install.bat first to complete the base installation,
+echo         then run this script to upgrade GPU support.
 echo.
 pause
 exit /b 1
@@ -89,7 +89,7 @@ echo.
 echo Please install the latest NVIDIA driver from:
 echo   https://www.nvidia.com/Download/index.aspx
 echo CUDA 12.x runtime (bundled by this script) requires driver version
-echo R525+ (Windows). Old drivers will cause silent CPU fallback.
+echo R525+ on Windows. Old drivers will cause silent CPU fallback.
 echo.
 echo For CPU-only, please run install.bat instead.
 echo.
@@ -117,7 +117,7 @@ echo onnxruntime-gpu was installed but cannot load CUDA/cuDNN DLLs.
 echo Common causes:
 echo   1. NVIDIA driver is too old - update to latest version
 echo   2. CUDA/cuDNN packages failed to download - check network
-echo   3. Conflicting onnxruntime (CPU) still installed
+echo   3. Conflicting onnxruntime CPU version still installed
 echo.
 echo Please update your NVIDIA driver and re-run this script.
 echo Driver download: https://www.nvidia.com/Download/index.aspx
