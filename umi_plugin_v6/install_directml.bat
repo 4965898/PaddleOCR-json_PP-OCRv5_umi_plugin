@@ -8,58 +8,33 @@ echo ========================================
 echo.
 
 REM Check Python: venv must exist (created by install.bat) or system Python available
-if not exist "ppocr_v6_env\Scripts\python.exe" (
-    where python >nul 2>nul
-    if errorlevel 1 (
-        echo [ERROR] 未检测到 Python，且虚拟环境不存在。
-        echo         请先运行 install.bat 完成基础安装（开箱即用，无需预装 Python），
-        echo         再运行本脚本升级 DirectML 支持。
-        echo.
-        pause
-        exit /b 1
-    )
-)
+if exist "ppocr_v6_env\Scripts\python.exe" goto :check_dx
+where python >nul 2>nul
+if errorlevel 1 goto :no_python
 
-REM Check for a DirectX 12 GPU (Intel Arc / AMD / NVIDIA all supported)
+:check_dx
 echo [CHECK] DirectX 12 GPU...
-REM DirectML runs on any DX12 GPU. We cannot reliably detect DX12 from a batch
-REM script, so we only warn here; the real check is whether DmlExecutionProvider
-REM is available after install (verified at the end of this script).
 echo [INFO] DirectML supports Intel Arc, AMD, and NVIDIA DX12 GPUs.
 echo        NVIDIA users may prefer install_gpu.bat (CUDA) for best performance.
 echo.
 
+REM Create venv if not exists
+if exist "ppocr_v6_env\Scripts\python.exe" goto :venv_exists
+echo [1/2] Creating virtual environment ppocr_v6_env ...
+python -m venv ppocr_v6_env
+if errorlevel 1 goto :venv_fail
+goto :venv_done
 
-if not exist "ppocr_v6_env\Scripts\python.exe" (
-    echo [1/2] Creating virtual environment ppocr_v6_env ...
-    python -m venv ppocr_v6_env
-    if errorlevel 1 (
-        echo [ERROR] Failed to create virtual environment.
-        pause
-        exit /b 1
-    )
-) else (
-    echo [1/2] Virtual environment already exists, skipping.
-)
+:venv_exists
+echo [1/2] Virtual environment already exists, skipping.
 
+:venv_done
 echo.
 echo [2/2] Installing paddleocr + onnxruntime-directml ...
 echo This may take 1-3 minutes...
 echo.
 ppocr_v6_env\Scripts\pip install paddleocr onnxruntime-directml --upgrade
-if errorlevel 1 (
-    echo.
-    echo [WARNING] Auto-install failed. Please run manually:
-    echo   ppocr_v6_env\Scripts\pip install paddleocr onnxruntime-directml
-    echo.
-    echo NOTE: onnxruntime-directml conflicts with onnxruntime / onnxruntime-gpu.
-    echo       If you previously ran install.bat or install_gpu.bat, uninstall first:
-    echo         ppocr_v6_env\Scripts\pip uninstall -y onnxruntime onnxruntime-gpu
-    echo       then re-run this script.
-    echo.
-    pause
-    exit /b 1
-)
+if errorlevel 1 goto :install_fail
 
 echo.
 echo [VERIFY] Checking DirectML provider...
@@ -71,9 +46,36 @@ echo  DirectML Setup Complete!
 echo ========================================
 echo.
 echo Enable "GPU Acceleration" in Umi-OCR plugin settings.
-echo The plugin auto-selects the backend: CUDA (if installed) ^> DirectML ^> CPU.
+echo The plugin auto-selects the backend: CUDA (if installed) > DirectML > CPU.
 echo DirectML works with Intel Arc, AMD, and any DirectX 12 GPU.
 echo.
 echo Please restart Umi-OCR.
 echo.
 pause
+exit /b 0
+
+:no_python
+echo [ERROR] 鏈娴嬪埌 Python锛屼笖铏氭嫙鐜涓嶅瓨鍦ㄣ�?
+echo         璇峰厛杩愯 install.bat 瀹屾垚鍩虹瀹夎锛堝紑绠卞嵆鐢紝鏃犻渶棰勮 Python锛夛紝
+echo         鍐嶈繍琛屾湰鑴氭湰鍗囩骇 DirectML 鏀寔銆?
+echo.
+pause
+exit /b 1
+
+:venv_fail
+echo [ERROR] Failed to create virtual environment.
+pause
+exit /b 1
+
+:install_fail
+echo.
+echo [WARNING] Auto-install failed. Please run manually:
+echo   ppocr_v6_env\Scripts\pip install paddleocr onnxruntime-directml
+echo.
+echo NOTE: onnxruntime-directml conflicts with onnxruntime / onnxruntime-gpu.
+echo       If you previously ran install.bat or install_gpu.bat, uninstall first:
+echo         ppocr_v6_env\Scripts\pip uninstall -y onnxruntime onnxruntime-gpu
+echo       then re-run this script.
+echo.
+pause
+exit /b 1
