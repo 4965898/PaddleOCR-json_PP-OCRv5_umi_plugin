@@ -32,17 +32,33 @@ _shrink_ratio = 0.0
 
 
 def _setup_nvidia_dlls():
-    """把 pip 安装的 nvidia CUDA/cuDNN DLL 路径加入搜索路径（GPU 加速所需）"""
+    """把 pip 安装的 nvidia CUDA/cuDNN DLL 路径加入搜索路径（GPU 加速所需）。
+
+    递归扫描 nvidia\\ 下所有子目录，把包含 .dll 文件的目录加入 DLL 搜索路径。
+    兼容不同版本 nvidia pip 包的目录结构差异（issue #10 根因）：
+      - 正常结构：nvidia\\<sub>\\bin\\*.dll
+      - cu13 包结构：nvidia\\cu13\\bin\\x86_64\\*.dll
+      - 旧版 cublas：nvidia\\cublas\\*.dll（无 bin 子目录）
+    之前版本只扫描 nvidia\\<sub>\\bin\\，导致后两种结构的 DLL 无法被找到，
+    ORT 创建 session 时静默回退到 CPU。
+    """
     try:
         import sysconfig
         site_dir = sysconfig.get_paths()["purelib"]
         nvidia_base = os.path.join(site_dir, "nvidia")
-        if os.path.isdir(nvidia_base):
-            for sub in os.listdir(nvidia_base):
-                dll_dir = os.path.join(nvidia_base, sub, "bin")
-                if os.path.isdir(dll_dir):
-                    os.add_dll_directory(dll_dir)
-                    os.environ["PATH"] = dll_dir + os.pathsep + os.environ.get("PATH", "")
+        if not os.path.isdir(nvidia_base):
+            return
+        added = set()
+        for root, _dirs, files in os.walk(nvidia_base):
+            # 只把包含 .dll 文件的目录加入搜索路径（跳过 include/lib 等无 dll 目录）
+            if any(f.lower().endswith(".dll") for f in files):
+                if root not in added:
+                    try:
+                        os.add_dll_directory(root)
+                    except Exception:
+                        pass
+                    os.environ["PATH"] = root + os.pathsep + os.environ.get("PATH", "")
+                    added.add(root)
     except Exception:
         pass
 

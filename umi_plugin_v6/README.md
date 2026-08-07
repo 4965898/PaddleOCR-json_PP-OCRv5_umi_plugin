@@ -1,4 +1,4 @@
-# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v1.7
+# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v1.8
 
 基于 [PaddleOCR 3.7.0](https://github.com/PaddlePaddle/PaddleOCR) + [ONNX Runtime](https://onnxruntime.ai/) 的 Umi-OCR 插件，使用最新的 **PP-OCRv6** 模型。
 
@@ -236,6 +236,12 @@ A: 这通常是因为 CUDA/cuDNN 运行库未正确加载，ORT 静默回退到�
    ```
    输出应包含 `CUDAExecutionProvider`。如果没有，说明 CUDA/cuDNN DLL 加载失败，请更新驱动后重试。
 
+6. **检查 CUDA/cuDNN DLL 路径**（v1.8 修复）：不同版本的 nvidia pip 包目录结构可能不同（如 `cudart64_12.dll` 可能在 `nvidia\cu13\bin\x86_64\` 而非 `nvidia\cuda_runtime\bin\`，`cublas64_12.dll` 可能在 `nvidia\cublas\` 根目录而非 `nvidia\cublas\bin\`）。v1.8 已改为递归扫描 `nvidia\` 下所有子目录，能自动适配这些差异。如果仍遇问题，可运行 `verify_gpu.py` 检查 DLL 加载情况：
+   ```
+   ppocr_v6_env\Scripts\python verify_gpu.py
+   ```
+   输出会显示每个关键 DLL 的 `[OK]` / `[FAIL]` 状态，便于定位缺失的 DLL。
+
 > **注意**：即使 GPU 正常工作，OCR 模型的 GPU 利用率也可能较低（1-10%），因为 OCR 推理的计算量相对较小，大部分时间花在 CPU 端的图像预处理和后处理上。这是正常现象——GPU 加速的效果体现在总耗时减少，而非 GPU 占用率高。
 
 > **显卡兼容性**：CUDA 加速仅支持 GTX 10 系列及之后的 NVIDIA 显卡。GTX 10 之前的显卡（如 GTX 9xx、7xx 等）不支持现代 CUDA/cuDNN，请改用 `install_directml.bat`（DirectML，支持任意 DX12 GPU）或 CPU 模式。
@@ -259,6 +265,14 @@ A: 在 Umi-OCR 的插件设置中切换「模型尺寸」。切换后会重新�
 - [Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) - 免费开源的 OCR 软件
 
 ## 更新日志
+
+### v1.8
+
+- **修复 CUDA/cuDNN DLL 路径搜索缺陷**（彻底解决 issue #10：用户反馈"打开硬件加速速度也不明显"，GPU 占用仅 1-3%，CPU 占用 80%）：
+  - **根因**：`_setup_nvidia_dlls()` 和 `verify_gpu.py` 的 `setup_nvidia_dlls()` 只扫描 `nvidia\<sub>\bin\` 这一种目录结构，无法适配不同版本 nvidia pip 包的目录差异。用户实际遇到的异常结构包括 `nvidia\cu13\bin\x86_64\cudart64_12.dll`（cu13 包多一层 `x86_64`）和 `nvidia\cublas\cublas64_12.dll`（cublas 包无 `bin` 子目录，DLL 在包根目录）。DLL 找不到 → ORT 创建 session 时静默回退到 CPU → GPU 不生效。用户手动修正路径后 GPU 占用飙到 80-90%。
+  - **修复方案**：将"只扫描 `nvidia\<sub>\bin\`"改为用 `os.walk` 递归扫描 `nvidia\` 下所有子目录，把所有包含 `.dll` 文件的目录都加入 `os.add_dll_directory()` 和 `PATH`。这样无论 DLL 在 `bin\`、`bin\x86_64\`、还是包根目录都能被找到，用户不再需要手动移动 DLL 文件。
+  - **影响文件**：`ppocr_v6_server.py` 的 `_setup_nvidia_dlls()`（运行时使用）、`verify_gpu.py` 的 `setup_nvidia_dlls()` 和 `find_nvidia_bin_dirs()`（安装时验证用）。两个函数均同步修改。
+  - **FAQ 更新**：「GPU 不生效？」排查指南新增第 6 步"检查 CUDA/cuDNN DLL 路径"，说明 v1.8 已自动适配不同目录结构，并给出 `verify_gpu.py` 诊断命令。
 
 ### v1.7
 
