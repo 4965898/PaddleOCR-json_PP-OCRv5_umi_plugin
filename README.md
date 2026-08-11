@@ -1,21 +1,18 @@
-# UmiOCR PP-OCRv6 ONNX Plugin（v1.7）
+# UmiOCR PP-OCRv6 ONNX Plugin（v1.9）
 
 本仓库包含两个版本的 Umi-OCR PaddleOCR 插件：
 
 | 版本 | 目录 | 引擎 | 模型 | 推荐度 |
-|------|------|------|------|--------|
-| **PP-OCRv6** | `umi_plugin_v6/` | Python + ONNX Runtime | PP-OCRv6（自动下载） | ⭐ 推荐 |
-| PP-OCRv5 | 仓库根目录 | C++（PaddleOCR-json.exe） | PP-OCRv5（手动下载） | 历史版本 |
+|---
 
----
-
-# PP-OCRv6 插件（ONNX Runtime 版）⭐ 推荐
+# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v1.9
 
 基于 [PaddleOCR 3.7.0](https://github.com/PaddlePaddle/PaddleOCR) + [ONNX Runtime](https://onnxruntime.ai/) 的 Umi-OCR 插件，使用最新的 **PP-OCRv6** 模型。
 
 ## 特性
 
 - **PP-OCRv6 模型**：基于 PPLCNetV4 统一骨干网络，识别精度大幅提升
+- **表格识别（v1.9 新增）**：结构化表格 → HTML 表格源码，基于 PP-DocLayout_plus-L 布局检测 + SLANet_plus 表格结构识别 + PP-OCRv6 单元格文字识别，全部 ONNX 模型，**零新增依赖**（无需安装额外 pip 包）
 - **ONNX Runtime 引擎**：轻量、易部署，绕过 paddlepaddle 的 oneDNN 兼容性问题
 - **自动下载模型**：首次使用时自动下载所选尺寸的 ONNX 模型到插件目录，无需手动下载
 - **两档模型**：medium（高精度）/ small（快速），可随时切换
@@ -32,7 +29,7 @@
 - **Umi-OCR**：Paddle v2.1.5 及以上
 - **Python**：**无需预装**（install.bat 会自动下载便携 Python）；如已安装 Python 3.10+ 则直接使用
 - **操作系统**：Windows 10/11 x64
-- **磁盘空间**：约 500MB（虚拟环境 + 模型文件）
+- **磁盘空间**：约 500MB（虚拟环境 + 模型文件；启用表格识别时额外 ~130MB 模型，按需下载）
 
 ## 安装步骤
 
@@ -85,7 +82,7 @@ Umi-OCR/
 > 2. 安装 `onnxruntime-gpu` + CUDA Runtime + cuDNN（约 1.6GB）
 > 3. 验证 CUDAExecutionProvider 是否可用
 >
-> 安装完成后，在 Umi-OCR 插件设置中勾选「启用GPU加速」即可。
+> 安装完成后，在 Umi-OCR 插件设置中勾选「启用GPU」即可。
 >
 > **如何确认 GPU 正在工作**：启动后查看 Umi-OCR 日志，应看到：
 > ```
@@ -122,6 +119,8 @@ Umi-OCR/
 > 安装完成后，在 Umi-OCR 插件设置中勾选「启用GPU加速」即可。插件自动识别已安装的后端：**CUDA 优先 → 其次 DirectML → 无则降级 CPU**。启动后可在日志中看到 `[ppocr_v6] engine=onnxruntime, gpu_backend=directml` 确认生效。
 >
 > **注意**：`onnxruntime-directml` 与 `onnxruntime` / `onnxruntime-gpu` 互斥，同一虚拟环境只能装一个。若之前跑过 `install.bat` 或 `install_gpu.bat`，请先 `ppocr_v6_env\Scripts\pip uninstall -y onnxruntime onnxruntime-gpu`，再运行 `install_directml.bat`。NVIDIA 用户仍推荐 `install_gpu.bat`（CUDA 比 DirectML 更快）。
+>
+> **关于 Vulkan**：ONNX Runtime 官方未提供 Vulkan Execution Provider，因此本插件无法像 ncnn 引擎那样支持 Vulkan。但在 Windows 上，**DirectML 已等价实现 Vulkan 的跨厂商 GPU 加速目标**——两者都支持 N卡/A卡/Intel Arc/核显，区别仅在于 Vulkan 跨平台（Linux/macOS）且零依赖，而 DirectML 仅限 Windows 且需装 onnxruntime-directml。本插件为 Windows-only，DirectML 已足够覆盖。
 
 ### 第 3 步：重启 Umi-OCR
 
@@ -137,8 +136,10 @@ Umi-OCR/
 
 | 选项 | 模型 | 精度 | 速度 | 适用场景 |
 |------|------|------|------|----------|
+| 快速（small） | PP-OCRv6_small | 较高（默认，日常够用） | 快（约 3 倍） | 日常使用、低配电脑 |
 | 高精度（medium） | PP-OCRv6_medium | 最高 | 较慢 | 高精度需求 |
-| 快速（small） | PP-OCRv6_small | 较高 | 快（约 3 倍） | 日常使用、低配电脑 |
+
+> **默认 small**：PP-OCRv6 全系精度较旧版（PP-OCRv5 及更早）有大幅提升，small 模型日常场景已足够。首次使用 small 模型时自动下载约 30MB；手动切到 medium 时才下载约 130MB，仅下载当前选择的尺寸。
 
 > PP-OCRv6 识别模型为多语言模型，可识别中英日韩等，无需按语言切换。
 
@@ -152,6 +153,30 @@ Umi-OCR/
 | 启用文本检测 | 开启 | 单行纯文本图片可关闭以跳过检测，显著加速 |
 | 纠正文本方向 | 关闭 | 识别倾斜/倒置文本时开启，会降低速度 |
 | PDF文本层精对齐 | 关闭 | 仅 PDF 双层文档场景需要。提供 0.05/0.08/0.12 预设与「自定义」浮点数输入（范围 0~0.5），推荐 0.08 |
+
+### 表格识别（v1.9 新增）
+
+插件额外提供表格识别入口，将图片中的结构化表格转换为 **HTML 表格源码**。普通 OCR 不受影响，表格功能按需懒加载（首次调用约需 10~30 秒加载模型并下载缺失模型，后续识别为正常速度）。
+
+**调用方式**（类似 `runPath` / `runBytes` / `runBase64` 的附加 API 方法）：
+
+| 方法 | 参数 | 说明 |
+|------|------|------|
+| `runTablePath(imgPath)` | 图片文件路径 | 表格识别 |
+| `runTableBytes(imageBytes)` | 图片字节 | 表格识别 |
+| `runTableBase64(imageBase64)` | 图片 Base64 字符串 | 表格识别 |
+
+**返回结构**：`{"code": 100, "data": {"html": "...", "tables": [...]}}`
+
+- `data.html`：整个图片中所有检测到的表格拼接的 HTML 源码
+- `data.tables`：每个表格的详细结果，含：
+  - `html`：该表格的 HTML 源码
+  - `box`：表格位置（当前输出为空列表）
+  - `cells`：单元格列表，每项含 `box`（[x1,y1,x2,y2] 坐标）和 `text`（该单元格的识别文字）
+
+> 表格识别不使用「竖排文字模式」重排后处理。表格模型受「启用GPU加速」设置影响：开启后表格识别同样走 CUDA / DirectML 后端。
+>
+> **示例**：识别包含 `Item/Qty/Price + Apple/3/1.5...` 的表格图片，`html` 输出为 `<table><tbody><tr><td>Item</td><td>Qty</td><td>Price</td></tr>...`，`cells` 中每个单元格的坐标与文字一一对应。
 
 ### 性能优化建议
 
@@ -183,7 +208,7 @@ Umi-OCR (Python 3.8)
                       └─ JSON stdin/stdout 通信（UTF-8 编码）
 ```
 
-- **引擎选择**：自动检测 onnxruntime 是否安装，优先使用 ONNX Runtime（轻量），未安装则回退 paddlepaddle；GPU 后端按 CUDA → DirectML → CPU 自动选择
+- **引擎选择**：自动检测 onnxruntime 是否安装，优先使用 ONNX Runtime（轻量），未安装则回退 paddlepaddle
 - **模型管理**：ONNX 模型统一存放在插件 `models/` 目录，不污染 Umi-OCR 其他插件
 - **编码处理**：server 强制 stdin/stdout 使用 UTF-8，避免 Windows 下中文乱码
 
@@ -204,11 +229,16 @@ umi_plugin_v6/
         │   └── inference.onnx
         ├── PP-OCRv6_small_det_onnx/
         │   └── inference.onnx
-        └── PP-OCRv6_small_rec_onnx/
+        ├── PP-OCRv6_small_rec_onnx/
+        │   └── inference.onnx
+        ├── PP-DocLayout_plus-L_onnx/ ← 表格识别：版面分析（~124MB，首次表格识别时下载）
+        │   └── inference.onnx
+        └── SLANet_plus_onnx/         ← 表格识别：单元格结构（~7.4MB）
             └── inference.onnx
 ```
 
 > 只下载用户选择的尺寸的模型，不会一次下载两种。
+> 表格识别模型（DocLayout + SLANet）在**首次表格识别**时自动下载，普通 OCR 不受影响。
 
 ## 关于 mkldnn 加速
 
@@ -245,6 +275,12 @@ A: 这通常是因为 CUDA/cuDNN 运行库未正确加载，ORT 静默回退到�
    ```
    输出应包含 `CUDAExecutionProvider`。如果没有，说明 CUDA/cuDNN DLL 加载失败，请更新驱动后重试。
 
+6. **检查 CUDA/cuDNN DLL 路径**（v1.8 修复）：不同版本的 nvidia pip 包目录结构可能不同（如 `cudart64_12.dll` 可能在 `nvidia\cu13\bin\x86_64\` 而非 `nvidia\cuda_runtime\bin\`，`cublas64_12.dll` 可能在 `nvidia\cublas\` 根目录而非 `nvidia\cublas\bin\`）。v1.8 已改为递归扫描 `nvidia\` 下所有子目录，能自动适配这些差异。如果仍遇问题，可运行 `verify_gpu.py` 检查 DLL 加载情况：
+   ```
+   ppocr_v6_env\Scripts\python verify_gpu.py
+   ```
+   输出会显示每个关键 DLL 的 `[OK]` / `[FAIL]` 状态，便于定位缺失的 DLL。
+
 > **注意**：即使 GPU 正常工作，OCR 模型的 GPU 利用率也可能较低（1-10%），因为 OCR 推理的计算量相对较小，大部分时间花在 CPU 端的图像预处理和后处理上。这是正常现象——GPU 加速的效果体现在总耗时减少，而非 GPU 占用率高。
 
 > **显卡兼容性**：CUDA 加速仅支持 GTX 10 系列及之后的 NVIDIA 显卡。GTX 10 之前的显卡（如 GTX 9xx、7xx 等）不支持现代 CUDA/cuDNN，请改用 `install_directml.bat`（DirectML，支持任意 DX12 GPU）或 CPU 模式。
@@ -268,6 +304,25 @@ A: 在 Umi-OCR 的插件设置中切换「模型尺寸」。切换后会重新�
 - [Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) - 免费开源的 OCR 软件
 
 ## 更新日志
+
+### v1.9
+
+- **新增表格识别**：将图片中的结构化表格识别为 HTML 表格源码。基于 `PP-DocLayout_plus-L`（版面分析）+ `SLANet_plus`（表格结构） + PP-OCRv6（单元格文字识别），全部使用 **ONNX 模型 + onnxruntime 引擎**，**零新增依赖**（不要求安装额外 pip 组件，按需下载约 131MB 表格模型）。
+  - 插件 API 新增 `runTablePath` / `runTableBytes` / `runTableBase64` 三个入口，输入与普通 OCR 一致，返回 `{code, data: {html, tables}}`，其中 `tables[].cells[]` 含单元格坐标 `box` 与文字 `text`。
+  - 表格识别懒加载：首次调用时才创建管道（约 10~30 秒），普通 OCR 启动与运行完全不受影响，不占用额外内存。
+  - 通过 `_patch_table_deps()` 绕过 paddlex `table_recognition` 管道初始化时对 `paddlex[ocr]` 全量 extra 组件的强制检查（该检查要求的组件实际运行不需要），保证零额外安装可用。
+  - 复用 `_select_engine()` 的 engine_config：开启「启用GPU加速」时表格识别同样使用 CUDA / DirectML 后端。
+  - `_collect_table_results()` 输出规范化：剥离 HTML 中残留的 `<html><body>` 包装；用识别框中心点空间匹配单元格，保证 `cells[].text` 与单元格一一对应。
+- **默认模型改为 small**：「模型尺寸」默认选择「快速（small）」——small 模型识别精度高于旧版 PP-OCRv6_medium（PP-OCRv6 全系精度显著提升），日常场景足够。需要更高精度时再手动切换到 medium。首次使用 small 时自动下载约 30MB 模型。
+- **启动预热（Warmup）**：模型初始化完成后立刻用一张合成图跑一次完整推理，提前完成 ONNX Runtime / CUDA 的 arena 分配与 kernel 编译，首次真实识别不再有冷启动延迟。预热失败不影响使用（仅记日志）。
+
+### v1.8
+
+- **修复 CUDA/cuDNN DLL 路径搜索缺陷**（彻底解决 issue #10：用户反馈"打开硬件加速速度也不明显"，GPU 占用仅 1-3%，CPU 占用 80%）：
+  - **根因**：`_setup_nvidia_dlls()` 和 `verify_gpu.py` 的 `setup_nvidia_dlls()` 只扫描 `nvidia\<sub>\bin\` 这一种目录结构，无法适配不同版本 nvidia pip 包的目录差异。用户实际遇到的异常结构包括 `nvidia\cu13\bin\x86_64\cudart64_12.dll`（cu13 包多一层 `x86_64`）和 `nvidia\cublas\cublas64_12.dll`（cublas 包无 `bin` 子目录，DLL 在包根目录）。DLL 找不到 → ORT 创建 session 时静默回退到 CPU → GPU 不生效。用户手动修正路径后 GPU 占用飙到 80-90%。
+  - **修复方案**：将"只扫描 `nvidia\<sub>\bin\`"改为用 `os.walk` 递归扫描 `nvidia\` 下所有子目录，把所有包含 `.dll` 文件的目录都加入 `os.add_dll_directory()` 和 `PATH`。这样无论 DLL 在 `bin\`、`bin\x86_64\`、还是包根目录都能被找到，用户不再需要手动移动 DLL 文件。
+  - **影响文件**：`ppocr_v6_server.py` 的 `_setup_nvidia_dlls()`（运行时使用）、`verify_gpu.py` 的 `setup_nvidia_dlls()` 和 `find_nvidia_bin_dirs()`（安装时验证用）。两个函数均同步修改。
+  - **FAQ 更新**：「GPU 不生效？」排查指南新增第 6 步"检查 CUDA/cuDNN DLL 路径"，说明 v1.8 已自动适配不同目录结构，并给出 `verify_gpu.py` 诊断命令。
 
 ### v1.7
 
@@ -330,10 +385,6 @@ A: 在 Umi-OCR 的插件设置中切换「模型尺寸」。切换后会重新�
 
 - 修复 cuDNN 加载失败
 - GPU 显存优化（首次引入 `gpu_mem_limit` + `arena_extend_strategy`）
-
-### v1.0
-
-- 基于 PaddleOCR 3.7.0 + ONNX Runtime 的 PP-OCRv6 插件初始版本
 
 ---
 

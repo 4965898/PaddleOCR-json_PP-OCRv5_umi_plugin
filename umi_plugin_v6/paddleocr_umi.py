@@ -6,6 +6,7 @@ from .ppocr_pipe import PPOCR_pipe
 import os
 import logging
 import psutil
+from base64 import b64encode
 
 logger = logging.getLogger("Umi-OCR")
 
@@ -194,6 +195,28 @@ class Api:
         self.__runBefore()
         res = self.api.runBase64(imageBase64)
         res = self._postProcess(res)
+        self.__ramClear()
+        return res
+
+    # --- 表格识别（可选高级功能）---
+    # 返回结构：{"code": 100, "data": {"html": "<table>...</table>", "tables": [...]}}
+    # 表格识别不使用竖排重排后处理；模型按需懒加载，首次调用约 10~30 秒。
+    def runTablePath(self, imgPath: str):
+        self.__runBefore()
+        res = self.api.runDict({"image_path": imgPath, "table": True})
+        self.__ramClear()
+        return res
+
+    def runTableBytes(self, imageBytes):
+        self.__runBefore()
+        imageBase64 = b64encode(imageBytes).decode("utf-8")
+        res = self.api.runDict({"image_base64": imageBase64, "table": True})
+        self.__ramClear()
+        return res
+
+    def runTableBase64(self, imageBase64):
+        self.__runBefore()
+        res = self.api.runDict({"image_base64": imageBase64, "table": True})
         self.__ramClear()
         return res
 

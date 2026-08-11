@@ -1,4 +1,4 @@
-# UmiOCR PP-OCRv6 ONNX Plugin (v1.6)
+# UmiOCR PP-OCRv6 ONNX Plugin (v1.9)
 
 This repository contains two versions of the Umi-OCR PaddleOCR plugin:
 
@@ -313,6 +313,38 @@ To use "Fast" mode, you must download the PP-OCRv5 mobile_rec model:
 ---
 
 ## Changelog
+
+### v1.9
+
+- **Added Table Recognition**: Recognize structured tables in images as HTML table source. Based on `PP-DocLayout_plus-L` (layout analysis) + `SLANet_plus` (table structure) + PP-OCRv6 (cell text recognition), all using **ONNX models + onnxruntime engine**, **zero new dependencies** (no extra pip packages required; ~131MB of table models auto-downloaded on first use).
+  - New plugin API entries `runTablePath` / `runTableBytes` / `runTableBase64`, input identical to normal OCR; returns `{code, data: {html, tables}}`, where `tables[].cells[]` contains cell coordinates `box` and text `text`.
+  - Table recognition is lazy-loaded: the pipeline is created only on first call (~10-30s); normal OCR startup and runtime are completely unaffected, no extra memory usage.
+  - Bypasses paddlex's mandatory `paddlex[ocr]` full-extra dependency check during `table_recognition` pipeline init via `_patch_table_deps()` (the required components aren't actually needed at runtime), guaranteeing zero extra installs.
+  - Reuses `_select_engine()` engine_config: table recognition uses CUDA / DirectML backend too when "Enable GPU Acceleration" is on.
+  - `_collect_table_results()` normalizes output: strips residual `<html><body>` wrappers from HTML; spatial-matches cell boxes by detection-box centroids so `cells[].text` maps 1:1 to cells.
+- **Default model changed to small**: "Model Size" now defaults to "Fast (small)"—small's accuracy is already higher than the old PP-OCRv6_medium lineage (PP-OCRv6 series accuracy is significantly improved), sufficient for daily use. Switch to medium manually only when higher accuracy is needed. First use of small auto-downloads ~30MB of models.
+- **Startup warmup**: after model init, immediately runs one inference on a synthetic image to pre-complete ONNX Runtime / CUDA arena allocation and kernel compilation, eliminating cold-start latency on the first real recognition. Warmup failure doesn't affect usage (logged only).
+
+### v1.8
+
+- **Fix CUDA/cuDNN DLL path search defect** (thoroughly resolves issue #10: user reported "no speedup with hardware acceleration", GPU usage only 1-3%, CPU 80%):
+  - **Root cause**: `_setup_nvidia_dlls()` and `verify_gpu.py`'s `setup_nvidia_dlls()` only scanned the single `nvidia\<sub>\bin\` layout, failing to adapt to directory differences across nvidia pip package versions. Actual abnormal structures encountered: `nvidia\cu13\bin\x86_64\cudart64_12.dll` (cu13 package has an extra `x86_64` layer) and `nvidia\cublas\cublas64_12.dll` (cublas package has no `bin` subdir; DLLs live in the package root). Missing DLLs → ORT silently falls back to CPU when creating sessions → GPU inactive. After the user manually fixed paths, GPU usage jumped to 80-90%.
+  - **Fix**: changed "scan only `nvidia\<sub>\bin\`" to recursive `os.walk` over `nvidia\`, adding every directory containing `.dll` files to `os.add_dll_directory()` and `PATH`. Works regardless of whether DLLs are in `bin\`, `bin\x86_64\`, or the package root; users no longer need to move DLLs manually.
+  - **Affected files**: `_setup_nvidia_dlls()` in `ppocr_v6_server.py` (runtime) and `setup_nvidia_dlls()` + `find_nvidia_bin_dirs()` in `verify_gpu.py` (install-time verification). Both updated in sync.
+  - **FAQ update**: "GPU not working?" troubleshooting adds step 6 "Check CUDA/cuDNN DLL paths", explaining v1.8 auto-adapts to different directory structures and pointing to `verify_gpu.py` for diagnosis.
+
+### v1.7
+
+- **Out-of-the-box: no Python preinstall needed** (lowers the barrier for beginners): `install.bat` upgraded to out-of-the-box mode—if no system Python is detected, it auto-downloads a portable Python 3.11 (~30MB) via [uv](https://github.com/astral-sh/uv) and creates the virtual environment, with no manual Python install needed. Uses the system Python directly if present. Beginners just double-click `install.bat` and wait; zero command-line interaction.
+- **Fix GPU acceleration silently falling back to CPU** (addresses issue #10: user reported "no speedup with hardware acceleration", CPU 77% while GPU only 1-3%; root cause: CUDA/cuDNN runtime libs not loaded correctly, ORT silently fell back to CPU with no user visibility):
+  - **`_select_engine()` adds a GPU-unavailable warning**: when `use_gpu=True` but neither `CUDAExecutionProvider` nor `DmlExecutionProvider` is available, prints a prominent multi-line WARNING to stderr listing available providers, the CPU fallback fact, and fix steps (run install_gpu.bat / install_directml.bat + update GPU driver).
+  - **New `_verify_gpu_session()`**: best-effort reads paddlex-internal `ONNXRuntimeRunner.session.get_providers()` at the end of `init_ocr()` to verify the providers the ORT session *actually* uses (not the global availability list). Even if `get_available_providers()` reports CUDA available, session creation can silently fall back to CPU due to DLL version mismatches etc.—this check makes the fallback visible. Prints `GPU verified: ... session uses ['CUDAExecutionProvider', ...]` on success, a prominent WARNING on failure.
+- **Improved `install_gpu.bat`**:
+  - Auto-uninstalls the conflicting CPU `onnxruntime` before installing (`pip uninstall -y onnxruntime`), avoiding wrong-DLL loading when both are present.
+  - Displays GPU driver version and model (`nvidia-smi --query-gpu=driver_version,name`) so users can confirm the driver meets CUDA 12.x's R525+ requirement.
+  - Verifies CUDAExecutionProvider is actually usable after install (`exit(0 if 'CUDAExecutionProvider' in ps else 1)`), with explicit error message and fix advice instead of silently continuing.
+  - Reminds users to check `[ppocr_v6] GPU verified: ...` in the Umi-OCR log to confirm GPU is active.
+- **Updated GPU acceleration docs**: README adds a "GPU Acceleration Requirements" table clearly listing the five requirements and their sources: NVIDIA GPU, GPU driver (R525+), CUDA Runtime 12.x, cuDNN 9.x, onnxruntime-gpu; FAQ "GPU not working?" is now a step-by-step troubleshooting guide (check log → update driver → reinstall → check pip packages → verify CUDA).
 
 ### v1.6
 

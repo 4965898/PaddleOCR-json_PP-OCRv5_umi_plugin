@@ -30,6 +30,11 @@ _det = True
 # 0 表示不收缩；典型值 0.08~0.12（各点向重心移动该比例，框宽高约收缩 2 倍该值）
 _shrink_ratio = 0.0
 
+# 表格识别（懒加载）：首次收到表格命令时才创建 paddlex table_recognition 管道
+_table_pipe = None
+_table_model_size = "small"
+_patched_table_deps = False
+
 
 def _setup_nvidia_dlls():
     """把 pip 安装的 nvidia CUDA/cuDNN DLL 路径加入搜索路径（GPU 加速所需）。
@@ -364,7 +369,7 @@ def _verify_gpu_session(ocr_or_recognizer, det=True):
 
 
 def parse_config(args):
-    config = {"model_size": "medium", "lang": "ch"}
+    config = {"model_size": "small", "lang": "ch"}
     script_dir = os.path.dirname(os.path.abspath(__file__))
     if args.config_path:
         config_file = args.config_path
@@ -396,6 +401,8 @@ def init_ocr(args):
     config = parse_config(args)
     model_size = config["model_size"]
     lang = config["lang"]
+    global _table_model_size
+    _table_model_size = model_size
     det = args.det if args.det is not None else True
     cls = args.cls if args.cls is not None else False
     rec_batch_num = args.rec_batch_num or 6
@@ -473,6 +480,26 @@ def init_ocr(args):
     # 让用户能从日志确认 GPU 是否真正生效。
     if _engine == "onnxruntime" and _gpu_backend:
         _verify_gpu_session(_ocr if _ocr else _recognizer, det=det)
+
+    # 预热：对刚创建的模型跑一次最简推理，提前完成 ONNX Runtime 的
+    # ORT heap arena / CUDA BFC arena 分配与 kernel 编译。否则首次真实识别
+    # 会包含这部分开销（冷启动第一张图明显偏慢）。失败仅记日志，不影响使用。
+    try:
+        import time as _time
+        import numpy as _np
+        _t0 = _time.time()
+        # 640x192 白底 + 几行黑条纹近似文本，足够触发 det + rec 完整推理链
+        _warm = _np.full((192, 640, 3), 255, dtype=_np.uint8)
+        for _y in (60, 90, 120, 150):
+            _warm[_y:_y + 12, 20:620, :] = 0
+        if det:
+            list(_ocr.predict(_warm))
+        else:
+            list(_recognizer.predict(_warm))
+        print(f"[ppocr_v6] warmup completed in {_time.time() - _t0:.2f}s",
+              file=sys.stderr, flush=True)
+    except Exception as _e:
+        print(f"[ppocr_v6] warmup skipped: {_e}", file=sys.stderr, flush=True)
 
 
 def _get(page, key, default=None):
@@ -666,6 +693,193 @@ def run_ocr(cmd):
             _cleanup_gpu_memory()
 
 
+def _patch_table_deps():
+    """绕过 paddlex 的 `paddlex[ocr]` 全量 extra 依赖检查（表格识别仅需已在环境中的
+    onnxruntime + 官方 ONNX 模型，无需补齐 pip 组件大全家桶）。
+
+    paddlex 的 table_recognition 管道在 __init__ 时执行 require_extra("ocr")，
+    要求 EXTRAS['ocr'] 全部 ~20 个包都可用（含 scikit-learn/scipy/lxml/openpyxl 等），
+    否则直接抛 DependencyError。这些包与表格识别（PP-DocLayout_plus-L 布局 +
+    SLANet_plus 结构识别 + PP-OCRv6 det/rec）的实际推理无关。
+
+    这里仅把 "ocr" 这个 extra 的检查结果豁免为 True，其余 extra（如 "genai"）
+    保持原逻辑。仅在 first 表格调用前执行一次，且幂等。
+    """
+    global _patched_table_deps
+    if _patched_table_deps:
+        return
+    try:
+        import paddlex.utils.deps as _deps
+        _orig = _deps.is_extra_available.__wrapped__  # 解开 lru_cache 拿到原函数
+        def _is_extra_available(extra):
+            if extra == "ocr":
+                return True
+            return _orig(extra)
+        _deps.is_extra_available = _is_extra_available
+        _patched_table_deps = True
+        print("[ppocr_v6] table pipeline: paddlex[ocr] extra check bypassed "
+              "(deps verified at import time)", file=sys.stderr, flush=True)
+    except Exception as e:
+        print(f"[ppocr_v6] WARNING: failed to patch paddlex deps check: {e}",
+              file=sys.stderr, flush=True)
+
+
+def _get_table_pipeline():
+    """懒加载 paddlex table_recognition 管道（v1：布局 + SLANet_plus + PP-OCRv6）。
+
+    模型组合（全部为官方 ONNX 包，无额外 pip 依赖）：
+      - LayoutDetection:   PP-DocLayout_plus-L（页面布局，含 table 区域检测）
+      - TableStructure:    SLANet_plus（表格结构识别 → HTML）
+      - GeneralOCR 子管道: PP-OCRv6 det + rec（识别单元格文本，尺寸跟随 OCR 配置）
+    关闭 doc_preprocessor（弯曲矫正/方向分类，v1 已确认不实例化其 LCNet 模型），
+    与现有的轻量 OCR 路径一致。
+    复用 init_ocr 时的 engine_config（CUDA/DirectML/CPU 全兼容）。
+    """
+    global _table_pipe
+    if _table_pipe is not None:
+        return _table_pipe
+    _patch_table_deps()
+    from paddlex import create_pipeline
+    from paddlex.inference import load_pipeline_config
+
+    cfg = load_pipeline_config("table_recognition")
+    cfg["use_doc_preprocessor"] = False
+    cfg["use_doc_orientation_classify"] = False
+    cfg["use_doc_unwarping"] = False
+    cfg["SubModules"]["LayoutDetection"]["model_name"] = "PP-DocLayout_plus-L"
+    det_model = f"PP-OCRv6_{_table_model_size}_det"
+    rec_model = f"PP-OCRv6_{_table_model_size}_rec"
+    cfg["SubPipelines"]["GeneralOCR"]["SubModules"]["TextDetection"]["model_name"] = det_model
+    cfg["SubPipelines"]["GeneralOCR"]["SubModules"]["TextRecognition"]["model_name"] = rec_model
+
+    # 复用 OCR 路径的引擎配置（onnxruntime + 当前 device/GPU 后端）
+    engine, engine_config = _select_engine(_use_gpu, _getattr(_init_args, "cpu_threads", None), _table_model_size)
+    kwargs = {"config": cfg, "engine": engine}
+    if engine == "onnxruntime":
+        # DirectML 场景：_select_engine 已把 device_type 置为 "cpu"，直接复用即可
+        kwargs["engine_config"] = engine_config
+        kwargs["device"] = "cpu" if _gpu_backend == "directml" else None
+    print(f"[ppocr_v6] creating table pipeline (layout+SLANet_plus+{det_model}/{rec_model}, "
+          f"engine={engine})...", file=sys.stderr, flush=True)
+    _table_pipe = create_pipeline(**kwargs)
+    print("[ppocr_v6] table pipeline ready.", file=sys.stderr, flush=True)
+    return _table_pipe
+
+
+def _getattr(obj, name, default=None):
+    return getattr(obj, name, default) if obj is not None else default
+
+
+def _collect_table_results(page):
+    """把 paddlex page 结果整理为统一 JSON：{code, data:{html, tables}}。
+
+    paddlex 输出结构（SDKResult.json 的 res 字段）：
+      layout_det_res:  {boxes: [{label, score, coordinate}]}
+      table_res_list:  [{pred_html, cell_box_list, table_ocr_pred}]
+    这里输出与 PaddleOCR-json 兼容的外层协议，data 内含：
+      html  : 所有表格的 <table>...</table> 片段拼接（不含 <html><body> 包装）
+      tables: [{html, box, cells}] 每个表格的原图坐标 box 与单元格文字列表
+    """
+    res = page.json.get("res", {}) if hasattr(page, "json") else page
+    layout = res.get("layout_det_res", {}) or {}
+    table_list = res.get("table_res_list", []) or []
+    tables = []
+    full_html = ""
+    for t in table_list:
+        pred_html = t.get("pred_html", "")
+        # 去掉 paddlex 的 <html><body> 外包装，仅保留表格本体，便于直接嵌入
+        body = pred_html
+        for _ in range(4):  # <html><body> 最多两层包装，循环剥到不再变化为止
+            changed = False
+            for tag in ("body", "html"):
+                open_tag = f"<{tag}>"
+                close_tag = f"</{tag}>"
+                if body.lower().startswith(open_tag) and body.lower().endswith(close_tag):
+                    body = body[len(open_tag):-len(close_tag)]
+                    changed = True
+            if not changed:
+                break
+        cells = []
+        cell_boxes = t.get("cell_box_list", []) or []
+        ocr_pred = t.get("table_ocr_pred", {}) or {}
+        rec_texts = ocr_pred.get("rec_texts", []) if isinstance(ocr_pred, dict) else []
+        rec_polys = ocr_pred.get("rec_polys", []) if isinstance(ocr_pred, dict) else []
+        # 按空间匹配：把每个 OCR 文本归入其中心点所在的单元格（cell 为 [x1,y1,x2,y2]）
+        for cb in cell_boxes:
+            cells.append({"box": list(cb), "text": ""})
+        if cells and rec_texts:
+            import numpy as np
+            for i, txt in enumerate(rec_texts):
+                poly = rec_polys[i] if i < len(rec_polys) else None
+                if poly is None or not len(poly):
+                    continue
+                pts = np.asarray(poly, dtype=np.float32)
+                if pts.ndim != 2 or pts.shape[0] < 2:
+                    continue
+                cx = float(pts[:, 0].mean())
+                cy = float(pts[:, 1].mean())
+                for cell in cells:
+                    b = cell["box"]
+                    if len(b) == 4 and b[0] - 1 <= cx <= b[2] + 1 and b[1] - 1 <= cy <= b[3] + 1:
+                        if cell["text"]:
+                            cell["text"] += "\n"
+                        cell["text"] += txt
+                        break
+        tables.append({
+            "html": body,
+            "box": t.get("bbox", []),
+            "cells": cells,
+        })
+        full_html += body
+    return {
+        "html": full_html,
+        "tables": tables,
+    }
+
+
+def run_table(cmd):
+    """执行表格识别命令：{"image_path": "...", "table": true}。
+
+    输入与 run_ocr 兼容（image_path / image_base64 二选一），输出：
+      {"code": 100, "data": {"html": ..., "tables": [...]}}
+    """
+    global _table_pipe
+    try:
+        try:
+            pipe = _get_table_pipeline()
+        except Exception as e:
+            return {"code": 902, "data": f"表格识别初始化失败: {e}"}
+        tmp_path = None
+        try:
+            if "image_path" in cmd:
+                input_data = cmd["image_path"]
+            elif "image_base64" in cmd:
+                img_bytes = base64.b64decode(cmd["image_base64"])
+                tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                tmp.write(img_bytes)
+                tmp.close()
+                input_data = tmp.name
+                tmp_path = tmp.name
+            else:
+                return {"code": 403, "data": "No valid tasks."}
+            result = list(pipe.predict(input_data))
+            if not result:
+                return {"code": 101, "data": f'No table found in image. Path:"{input_data}"'}
+            data = _collect_table_results(result[0])
+            if not data["html"]:
+                return {"code": 101, "data": f'No table found in image. Path:"{input_data}"'}
+            return {"code": 100, "data": data}
+        finally:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+            _cleanup_gpu_memory()
+    except Exception as e:
+        return {"code": 902, "data": f"表格识别异常: {e}"}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_path", type=str, default="")
@@ -702,7 +916,10 @@ def main():
         except json.JSONDecodeError:
             print(json.dumps({"code": 400, "data": "Invalid JSON"}, ensure_ascii=False), flush=True)
             continue
-        result = run_ocr(cmd)
+        if cmd.get("table"):
+            result = run_table(cmd)
+        else:
+            result = run_ocr(cmd)
         print(json.dumps(result, ensure_ascii=False), flush=True)
 
 
