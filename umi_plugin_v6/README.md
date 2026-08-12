@@ -34,14 +34,23 @@
 Umi-OCR/
 └── UmiOCR-data/
     └── plugins/
-        └── umi_plugin_v6/    ← 复制到这里
-            ├── install.bat
-            ├── PaddleOCR-json.bat
-            ├── ppocr_v6_server.py
-            ├── ...
-            └── models/
-                ├── config_medium.txt
-                └── config_small.txt
+        └── umi_plugin_v6/            ← 复制到这里
+            ├── install.bat            ← CPU 版安装脚本
+            ├── install_gpu.bat        ← NVIDIA GPU 加速安装脚本
+            ├── install_directml.bat   ← DirectML (Intel Arc/AMD) 安装脚本
+            ├── PaddleOCR-json.bat     ← 启动脚本
+            ├── ppocr_v6_server.py     ← OCR + 表格识别服务端
+            ├── ppocr_pipe.py          ← 识别管道
+            ├── paddleocr_umi.py       ← Umi-OCR 插件接口
+            ├── paddleocr_config.py    ← 设置界面配置（含表格识别开关）
+            ├── verify_gpu.py          ← GPU 诊断工具
+            ├── i18n.csv               ← 多语言文本
+            ├── __init__.py
+            ├── models/                ← 模型存放目录（自动创建）
+            │   ├── config_small.txt
+            │   ├── config_medium.txt
+            │   └── official_models/   ← 自动下载的 ONNX 模型在这里
+            └── ppocr_v6_env/          ← 虚拟环境（安装后生成）
 ```
 
 ### 第 2 步：安装环境（开箱即用，无需预装 Python）
@@ -247,6 +256,39 @@ umi_plugin_v6/
 
 > 只下载用户选择的尺寸的模型，不会一次下载两种。
 > 表格识别模型（DocLayout + SLANet）在**首次表格识别**时自动下载，普通 OCR 不受影响。
+
+### 手动下载表格识别模型
+
+如果首次使用表格识别时自动下载失败（网络超时、HuggingFace 被墙等），可手动下载并放置模型文件。
+
+**需要下载的模型（共 2 个，约 131MB）**：
+
+| 模型 | 用途 | 大小 | 百度云直链下载地址 |
+|------|------|------|------------------|
+| PP-DocLayout_plus-L_onnx | 表格版面检测 | ~124MB | `https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-DocLayout_plus-L_onnx_infer.tar` |
+| SLANet_plus_onnx | 表格结构识别 | ~7.4MB | `https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/SLANet_plus_onnx_infer.tar` |
+
+**手动安装步骤**：
+
+1. 下载上述两个 `.tar` 文件（浏览器直接打开链接即可下载，也可用迅雷等工具）
+2. 分别解压两个 tar 文件，解压后会得到同名目录：
+   - `PP-DocLayout_plus-L_onnx/`（内含 `inference.onnx` 等文件）
+   - `SLANet_plus_onnx/`（内含 `inference.onnx` 等文件）
+3. 将这两个目录放到插件的模型目录下：
+
+```
+umi_plugin_v6/
+└── models/
+    └── official_models/
+        ├── PP-DocLayout_plus-L_onnx/   ← 放在这里
+        │   └── inference.onnx
+        └── SLANet_plus_onnx/           ← 放在这里
+            └── inference.onnx
+```
+
+4. 重启 Umi-OCR，开启「表格识别」开关即可使用，不再触发自动下载。
+
+> **备选下载源**：百度云直链在国内速度较快。如果偏好 HuggingFace，也可从 `https://huggingface.co/PaddlePaddle/PP-DocLayout_plus-L_onnx` 和 `https://huggingface.co/PaddlePaddle/SLANet_plus_onnx` 下载（国内可用镜像 `https://hf-mirror.com` 替换域名）。放置位置与上述完全相同。
 
 ## 关于 mkldnn 加速
 

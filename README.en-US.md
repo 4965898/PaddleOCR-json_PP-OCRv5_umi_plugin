@@ -45,14 +45,23 @@ Copy the entire `umi_plugin_v6` folder into the Umi-OCR plugins directory:
 Umi-OCR/
 └── UmiOCR-data/
     └── plugins/
-        └── umi_plugin_v6/    ← Copy here
-            ├── install.bat
-            ├── PaddleOCR-json.bat
-            ├── ppocr_v6_server.py
-            ├── ...
-            └── models/
-                ├── config_medium.txt
-                └── config_small.txt
+        └── umi_plugin_v6/            ← Copy here
+            ├── install.bat            ← CPU installation script
+            ├── install_gpu.bat        ← NVIDIA GPU acceleration script
+            ├── install_directml.bat   ← DirectML (Intel Arc/AMD) script
+            ├── PaddleOCR-json.bat     ← Launch script
+            ├── ppocr_v6_server.py     ← OCR + table recognition server
+            ├── ppocr_pipe.py          ← Recognition pipeline
+            ├── paddleocr_umi.py       ← Umi-OCR plugin interface
+            ├── paddleocr_config.py    ← Settings UI config (includes table recognition toggle)
+            ├── verify_gpu.py          ← GPU diagnostic tool
+            ├── i18n.csv               ← Multilingual text
+            ├── __init__.py
+            ├── models/                ← Model storage directory (auto-created)
+            │   ├── config_small.txt
+            │   ├── config_medium.txt
+            │   └── official_models/   ← Auto-downloaded ONNX models go here
+            └── ppocr_v6_env/          ← Virtual environment (created after install)
 ```
 
 ### Step 2: Install Environment (Out-of-the-box, no Python pre-install needed)
@@ -258,6 +267,39 @@ umi_plugin_v6/
 
 > Only the models for the user's selected size are downloaded; both sizes are not downloaded simultaneously.
 > Table recognition models (DocLayout + SLANet) are auto-downloaded on the **first table recognition**; normal OCR is unaffected.
+
+### Manually Downloading Table Recognition Models
+
+If auto-download fails on first use of table recognition (network timeout, HuggingFace blocked, etc.), you can manually download and place the model files.
+
+**Models to download (2 files, ~131MB total)**:
+
+| Model | Purpose | Size | Baidu Cloud Direct Download URL |
+|-------|---------|------|-------------------------------|
+| PP-DocLayout_plus-L_onnx | Table layout detection | ~124MB | `https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-DocLayout_plus-L_onnx_infer.tar` |
+| SLANet_plus_onnx | Table structure recognition | ~7.4MB | `https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/SLANet_plus_onnx_infer.tar` |
+
+**Manual Installation Steps**:
+
+1. Download the two `.tar` files above (open the links in a browser, or use a download manager)
+2. Extract each tar file; you will get two directories with the same names:
+   - `PP-DocLayout_plus-L_onnx/` (contains `inference.onnx` and other files)
+   - `SLANet_plus_onnx/` (contains `inference.onnx` and other files)
+3. Place these two directories into the plugin's model directory:
+
+```
+umi_plugin_v6/
+└── models/
+    └── official_models/
+        ├── PP-DocLayout_plus-L_onnx/   ← Place here
+        │   └── inference.onnx
+        └── SLANet_plus_onnx/           ← Place here
+            └── inference.onnx
+```
+
+4. Restart Umi-OCR, enable the "Table Recognition" toggle, and it will work without triggering auto-download.
+
+> **Alternative download source**: The Baidu Cloud direct links above are fast in China. If you prefer HuggingFace, you can also download from `https://huggingface.co/PaddlePaddle/PP-DocLayout_plus-L_onnx` and `https://huggingface.co/PaddlePaddle/SLANet_plus_onnx` (use `https://hf-mirror.com` as a mirror in China). Place them in the same location as above.
 
 ## Regarding mkldnn Acceleration
 
