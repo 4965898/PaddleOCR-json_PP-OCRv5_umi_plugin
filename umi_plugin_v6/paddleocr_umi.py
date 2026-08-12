@@ -28,8 +28,9 @@ ExeConfigs = [
     # A1: det 框内缩比例，传给 server.py，0=关闭
     ("shrink_poly_ratio", "shrink_poly_ratio"),
     # 表格识别：开关 + 输出格式（html / tsv / off）
-    ("table_mode", "table_mode"),
-    ("table_format", "table_format"),
+    # 键名用 w1_/w2_ 前缀让字母序排在 vertical_text 之后（QVariantMap 按键名排序）
+    ("w1_table_mode", "table_mode"),
+    ("w2_table_format", "table_format"),
 ]
 
 
