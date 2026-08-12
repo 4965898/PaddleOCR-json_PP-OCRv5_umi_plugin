@@ -16,6 +16,7 @@ A Umi-OCR plugin based on [PaddleOCR 3.7.0](https://github.com/PaddlePaddle/Padd
 ## Features
 
 - **PP-OCRv6 Model**: Based on the PPLCNetV4 unified backbone, significantly improving recognition accuracy.
+- **Table Recognition (v2.0 New)**: Settings UI toggle + output format dropdown (HTML/TSV); auto-detects tables in images and outputs table-formatted text (paste into Excel to form a table instantly); also available as a standalone API. Based on PP-DocLayout_plus-L layout detection + SLANet_plus table structure recognition + PP-OCRv6 cell text recognition, all ONNX models with **zero new dependencies** (no extra pip packages required).
 - **ONNX Runtime Engine**: Lightweight and easy to deploy; bypasses oneDNN compatibility issues associated with `paddlepaddle`.
 - **Automatic Model Download**: Automatically downloads the ONNX model of the selected size to the plugin directory upon first use; no manual downloading required.
 - **Two Model Tiers**: Medium (High Accuracy) / Small (Fast), switchable at any time.
@@ -30,9 +31,9 @@ A Umi-OCR plugin based on [PaddleOCR 3.7.0](https://github.com/PaddlePaddle/Padd
 ## Environment Requirements
 
 - **Umi-OCR**: Paddle v2.1.5 or higher.
-- **Python**: 3.10+ (Must be added to system PATH to create the virtual environment).
+- **Python**: **No pre-installation needed** (`install.bat` auto-downloads a portable Python); if Python 3.10+ is already installed, it will be used directly.
 - **OS**: Windows 10/11 x64.
-- **Disk Space**: Approx. 500MB (Virtual environment + model files).
+- **Disk Space**: Approx. 500MB (virtual environment) + model files (default small ~30MB, optional medium ~130MB, table recognition ~131MB, downloaded on demand).
 
 ## Installation Steps
 
@@ -54,21 +55,46 @@ Umi-OCR/
                 └── config_small.txt
 ```
 
-### Step 2: Install Environment
+### Step 2: Install Environment (Out-of-the-box, no Python pre-install needed)
 
 Double-click `install.bat`. The script will automatically:
-1. Create a Python virtual environment named `ppocr_v6_env`.
-2. Install `paddleocr` + `onnxruntime` dependencies.
+1. **Detect system Python**: Uses it directly if found.
+2. **Auto-download if no Python**: Downloads a portable Python 3.11 (~30MB) via [uv](https://github.com/astral-sh/uv) — no manual Python installation needed.
+3. Create a Python virtual environment named `ppocr_v6_env`.
+4. Install `paddleocr` + `onnxruntime` dependencies (~200MB).
 
-Installation takes approximately 1-3 minutes (depending on network speed).
+Installation takes approximately 1-5 minutes (depending on network speed; first run without Python adds ~30MB).
+
+> Beginners just need to double-click `install.bat` and wait — no command-line interaction required.
 
 > **GPU Acceleration** (Optional, recommended for NVIDIA GPU users):
 >
-> **Hardware Requirements**: CUDA acceleration only supports NVIDIA GPUs from the **GTX 10 series and later** (e.g., GTX 1050/1060/1070/1080, RTX 20/30/40/50 series). GPUs prior to the GTX 10 series (e.g., GTX 9xx, 7xx, 6xx) do not support the modern CUDA/cuDNN runtime libraries required by this plugin and cannot enable GPU acceleration. Users with older cards are advised to use CPU mode, or use `install_directml.bat` (DirectML supports any DX12 GPU), or the legacy **PP-OCRv5** plugin (which has better compatibility).
+> **GPU Acceleration Requirements (NVIDIA CUDA path)**:
 >
-> To enable GPU acceleration, double-click `install_gpu.bat`. The script will automatically install `onnxruntime-gpu` + CUDA Runtime + cuDNN (approx. 1.6GB) without requiring manual downloads.
+> | Component | Requirement | Notes |
+> |------|------|------|
+> | **NVIDIA GPU** | GTX 10 series or later | GTX 1050+, RTX 20/30/40/50 series, etc. GPUs before GTX 10 (e.g., GTX 9xx/7xx) do not support modern CUDA/cuDNN |
+> | **NVIDIA GPU Driver** | **R525 or higher** (Windows) | Outdated drivers are the most common cause of GPU not working! [Driver Download](https://www.nvidia.com/Download/index.aspx) |
+> | CUDA Runtime 12.x | Auto-installed | Installed via pip `nvidia-cuda-runtime-cu12` by `install_gpu.bat`; **no manual CUDA Toolkit install needed** |
+> | cuDNN 9.x | Auto-installed | Installed via pip `nvidia-cudnn-cu12` by `install_gpu.bat`; **no manual cuDNN download needed** |
+> | onnxruntime-gpu | Auto-installed | Installed by `install_gpu.bat`; includes CUDA Execution Provider |
+>
+> **Important**: `install_gpu.bat` automatically installs CUDA Runtime and cuDNN runtime libraries via pip (~1.6GB). **No manual NVIDIA CUDA Toolkit or cuDNN installation required.** Just ensure your GPU driver is up-to-date (R525+).
+>
+> Double-click `install_gpu.bat`. The script will automatically:
+> 1. Uninstall any conflicting CPU version of `onnxruntime`
+> 2. Install `onnxruntime-gpu` + CUDA Runtime + cuDNN (~1.6GB)
+> 3. Verify that CUDAExecutionProvider is available
 >
 > After installation, check "Enable GPU Acceleration" in the Umi-OCR plugin settings.
+>
+> **How to confirm GPU is working**: After startup, check the Umi-OCR log for:
+> ```
+> [ppocr_v6] engine=onnxruntime, gpu_backend=cuda
+> [ppocr_v6] GPU verified: det model session uses ['CUDAExecutionProvider', ...]
+> [ppocr_v6] GPU verified: rec model session uses ['CUDAExecutionProvider', ...]
+> ```
+> If you see `gpu_backend=None` or a CPU fallback warning, GPU is not active — follow the troubleshooting steps in the FAQ below.
 >
 > **Performance Comparison** (RTX 3070 Ti Laptop, medium model, 4 lines of Chinese):
 >
@@ -97,12 +123,14 @@ Installation takes approximately 1-3 minutes (depending on network speed).
 > After installation, check "Enable GPU Acceleration" in the Umi-OCR plugin settings. The plugin auto-detects the installed backend: **CUDA first → then DirectML → fallback to CPU if none**. After startup, you can confirm it took effect via the log line `[ppocr_v6] engine=onnxruntime, gpu_backend=directml`.
 >
 > **Note**: `onnxruntime-directml` is mutually exclusive with `onnxruntime` / `onnxruntime-gpu`; only one can be installed in the same virtual environment. If you previously ran `install.bat` or `install_gpu.bat`, run `ppocr_v6_env\Scripts\pip uninstall -y onnxruntime onnxruntime-gpu` first, then run `install_directml.bat`. NVIDIA users should still prefer `install_gpu.bat` (CUDA is faster than DirectML).
+>
+> **About Vulkan**: ONNX Runtime does not officially provide a Vulkan Execution Provider, so this plugin cannot support Vulkan like the ncnn engine. However, on Windows, **DirectML already achieves the same cross-vendor GPU acceleration goal as Vulkan** — both support NVIDIA/AMD/Intel Arc/integrated GPUs. The difference is that Vulkan is cross-platform (Linux/macOS) and zero-dependency, while DirectML is Windows-only and requires installing `onnxruntime-directml`. This plugin is Windows-only, so DirectML is sufficient.
 
 ### Step 3: Restart Umi-OCR
 
 Restart Umi-OCR and select **PaddleOCR (PP-OCRv6)** in "Settings → Current Interface".
 
-The ONNX model of the selected size (approx. 10-50MB) will be automatically downloaded during the first recognition and cached in the plugin's `models/` directory.
+The ONNX model of the selected size (default small ~30MB) will be automatically downloaded during the first recognition and cached in the plugin's `models/` directory.
 
 ## Usage Instructions
 
@@ -112,8 +140,10 @@ Select the model size in the plugin settings:
 
 | Option | Model | Accuracy | Speed | Use Case |
 |------|------|------|------|----------|
+| Fast (small) | PP-OCRv6_small | High (default, sufficient for daily use) | Fast (approx 3x) | Daily use, low-spec PCs |
 | High Accuracy (medium) | PP-OCRv6_medium | Highest | Slower | High accuracy needs |
-| Fast (small) | PP-OCRv6_small | High | Fast (approx 3x) | Daily use, low-spec PCs |
+
+> **Default small**: The entire PP-OCRv6 series has significantly improved accuracy over older versions (PP-OCRv5 and earlier). The small model is sufficient for daily scenarios. First use of small auto-downloads ~30MB; switching to medium manually downloads ~130MB. Only the selected size is downloaded.
 
 > The PP-OCRv6 recognition model is multilingual and supports Chinese, English, Japanese, and Korean without switching languages.
 
@@ -127,12 +157,51 @@ Select the model size in the plugin settings:
 | Enable Text Detection | On | Can be disabled for single-line plain text images to skip detection and accelerate process. |
 | Correct Text Orientation | Off | Enable when recognizing tilted or upside-down text; will reduce speed. |
 | PDF Text Layer Fine Align | Off | Only needed for PDF dual-layer documents. Provides 0.05/0.08/0.12 presets and "Custom" float input (0~0.5), recommended 0.08. |
+| Table Recognition | Off | When enabled, auto-detects tables and outputs table-formatted text (HTML/TSV). First use auto-downloads table models (~131MB). |
+| Table Output Format | HTML | Table text format: HTML (table source) / TSV (tab-separated, paste into Excel to form a table) / Off. Only effective when "Table Recognition" is enabled. |
+
+### Table Recognition (v1.9 New)
+
+The plugin additionally provides a table recognition entry point that converts structured tables in images into **HTML table source**. Normal OCR is unaffected; table functionality is lazy-loaded (first call takes ~10-30 seconds to load models and download missing models, subsequent recognition runs at normal speed).
+
+**API Methods** (additional API methods similar to `runPath` / `runBytes` / `runBase64`):
+
+| Method | Parameter | Description |
+|------|------|------|
+| `runTablePath(imgPath)` | Image file path | Table recognition |
+| `runTableBytes(imageBytes)` | Image bytes | Table recognition |
+| `runTableBase64(imageBase64)` | Image Base64 string | Table recognition |
+
+**Return Structure**: `{"code": 100, "data": {"html": "...", "tables": [...]}}`
+
+- `data.html`: HTML source of all detected tables in the image concatenated together
+- `data.tables`: Detailed results for each table, containing:
+  - `html`: HTML source of that table
+  - `box`: Table position coordinates
+  - `cells`: List of cells, each containing `box` ([x1,y1,x2,y2] coordinates) and `text` (recognized text for that cell)
+
+> Table recognition does not use the "Vertical Text Mode" post-processing. The table model is affected by the "Enable GPU Acceleration" setting: when enabled, table recognition also uses the CUDA / DirectML backend.
+>
+> **Example**: Recognizing a table image containing `Item/Qty/Price + Apple/3/1.5...`, the `html` output is `<table><tbody><tr><td>Item</td><td>Qty</td><td>Price</td></tr>...`, and each cell in `cells` has coordinates matching the text 1:1.
+
+### Table Recognition Toggle (v2.0 New)
+
+Two new settings have been added below "Vertical Text Mode" in the plugin settings, allowing table-formatted text to be output directly in the standard OCR flow without calling the API separately:
+
+| Setting | Options | Description |
+|--------|------|------|
+| Table Recognition | Off / On | Toggle. When enabled, tables detected in images are output as table-formatted text; plain text remains as-is; images without tables behave unchanged. Off by default; does not affect normal recognition speed. First use auto-downloads table models (~131MB). |
+| Table Output Format | HTML (table source) / TSV (tab-separated) / Off | Dropdown. Effective when "Table Recognition" is enabled: HTML outputs `<table>` source for embedding in web/rich text; TSV is tab-separated text that pastes directly into Excel/WPS as a table; Off is equivalent to disabling table recognition. |
+
+When enabled, detected tables in the recognition results are output as a **single text block** (`is_table: true`); cell text within the table region is not output again; text outside tables retains the original line-by-line output. In Vertical Text Mode, table blocks participate in reordering as a whole.
 
 ### Performance Optimization Tips
 
 - **Daily screenshots**: Select `small` + `Limit image side length 640` + `Batch size 16` for maximum speed.
 - **High accuracy**: Select `medium` + `Limit image side length 960` + `Batch size 6`.
 - **Single line text**: Disable "Enable Text Detection" to skip the detection phase.
+- **Plain text scenarios**: Keep "Table Recognition" off to avoid extra table detection overhead.
+- **Table scenarios**: Enable "Table Recognition" and select TSV output; paste into Excel/WPS to form a table instantly. Table models are lazy-loaded; first table recognition takes ~10-30 seconds, subsequent runs are normal speed.
 - Graph optimization (highest level) and memory mode are already enabled in the code; no extra configuration is needed.
 
 ### Memory Usage Optimization
@@ -179,11 +248,16 @@ umi_plugin_v6/
         │   └── inference.onnx
         ├── PP-OCRv6_small_det_onnx/
         │   └── inference.onnx
-        └── PP-OCRv6_small_rec_onnx/
+        ├── PP-OCRv6_small_rec_onnx/
+        │   └── inference.onnx
+        ├── PP-DocLayout_plus-L_onnx/ ← Table recognition: layout analysis (~124MB, downloaded on first table recognition)
+        │   └── inference.onnx
+        └── SLANet_plus_onnx/         ← Table recognition: cell structure (~7.4MB)
             └── inference.onnx
 ```
 
 > Only the models for the user's selected size are downloaded; both sizes are not downloaded simultaneously.
+> Table recognition models (DocLayout + SLANet) are auto-downloaded on the **first table recognition**; normal OCR is unaffected.
 
 ## Regarding mkldnn Acceleration
 
@@ -192,13 +266,41 @@ umi_plugin_v6/
 ## FAQ
 
 ### Q: Why is the first recognition so slow?
-A: The first use requires downloading the model (approx. 10-50MB). Once cached locally, it is not needed again. The default source is HuggingFace; if downloads are slow in China, set the environment variable `PADDLE_PDX_MODEL_SOURCE=bos` to use the Baidu Cloud source.
+A: The first use requires downloading the model (default small ~30MB). Once cached locally, it is not needed again. The default source is HuggingFace; if downloads are slow in China, set the environment variable `PADDLE_PDX_MODEL_SOURCE=bos` to use the Baidu Cloud source. After the model is loaded, the plugin automatically performs a warmup inference (log line `[ppocr_v6] warmup completed`), so the first real recognition has no cold-start latency.
 
 ### Q: Why are there garbled Chinese characters?
 A: This plugin fixes Windows encoding issues (server forces UTF-8). If you still see garbled text, please ensure you are using the latest `ppocr_v6_server.py`.
 
-### Q: Why is GPU not working?
-A: For NVIDIA GPUs, run `install_gpu.bat` to install the CUDA components; for Intel Arc / AMD and other non-NVIDIA GPUs, run `install_directml.bat` to install the DirectML components. After installation, check "Enable GPU Acceleration" in the plugin settings. The plugin auto-selects the backend based on installed components (CUDA first → DirectML → CPU). If it still doesn't work, check whether your GPU drivers are up to date. After startup, check the log line `[ppocr_v6] engine=..., gpu_backend=...` to confirm the actual backend.
+### Q: Why is GPU not working? No speedup after enabling hardware acceleration?
+A: This is usually because the CUDA/cuDNN runtime libraries are not loaded correctly, causing ORT to silently fall back to CPU mode. Follow these steps to troubleshoot:
+
+1. **Check the log**: After startup, check the Umi-OCR log (or stderr output) for the `[ppocr_v6] engine=..., gpu_backend=...` line:
+   - `gpu_backend=cuda` + `GPU verified: ... session uses ['CUDAExecutionProvider', ...]` → GPU is working
+   - `gpu_backend=None` + WARNING → **GPU is not active**, follow the steps below to fix
+
+2. **Update GPU driver** (most common cause): CUDA 12.x runtime requires NVIDIA driver **R525 or higher**. Old drivers cause CUDA DLL loading failures, making ORT silently fall back to CPU. Go to the [NVIDIA Driver Download page](https://www.nvidia.com/Download/index.aspx) and update to the latest driver.
+
+3. **Re-run `install_gpu.bat`**: The script automatically uninstalls conflicting CPU `onnxruntime`, reinstalls `onnxruntime-gpu` + CUDA Runtime + cuDNN, and verifies CUDAExecutionProvider availability.
+
+4. **Check onnxruntime version**: Run `pip list | findstr onnxruntime` in `ppocr_v6_env` to confirm `onnxruntime-gpu` (not `onnxruntime`) is installed. The two are mutually exclusive; having both causes conflicts. To manually fix:
+   ```
+   ppocr_v6_env\Scripts\pip uninstall -y onnxruntime onnxruntime-gpu
+   ppocr_v6_env\Scripts\pip install "onnxruntime-gpu[cuda,cudnn]"
+   ```
+
+5. **Verify CUDA availability**:
+   ```
+   ppocr_v6_env\Scripts\python -c "import onnxruntime as ort; print(ort.get_available_providers())"
+   ```
+   The output should include `CUDAExecutionProvider`. If not, CUDA/cuDNN DLLs failed to load — update your driver and retry.
+
+6. **Check CUDA/cuDNN DLL paths** (v1.8 fix): Different versions of nvidia pip packages may have different directory structures (e.g., `cudart64_12.dll` might be in `nvidia\cu13\bin\x86_64\` instead of `nvidia\cuda_runtime\bin\`, `cublas64_12.dll` might be in `nvidia\cublas\` root instead of `nvidia\cublas\bin\`). v1.8 changed to recursive scanning of all subdirectories under `nvidia\` to auto-adapt to these differences. If you still encounter issues, run `verify_gpu.py` to check DLL loading:
+   ```
+   ppocr_v6_env\Scripts\python verify_gpu.py
+   ```
+   The output shows `[OK]` / `[FAIL]` status for each critical DLL, helping you identify missing DLLs.
+
+> **Note**: Even when GPU is working properly, OCR model GPU utilization may be low (1-10%) because OCR inference is relatively light computation, with most time spent on CPU-side image pre/post-processing. This is normal — GPU acceleration shows up as reduced total time, not high GPU utilization.
 
 > **GPU Compatibility**: CUDA acceleration is only supported on NVIDIA GPUs from the GTX 10 series onwards. GPUs before GTX 10 (e.g., GTX 9xx, 7xx) do not support modern CUDA/cuDNN; please use `install_directml.bat` (DirectML supports any DX12 GPU) or CPU mode.
 
