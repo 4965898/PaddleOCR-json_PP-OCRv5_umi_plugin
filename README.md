@@ -3,9 +3,13 @@
 本仓库包含两个版本的 Umi-OCR PaddleOCR 插件：
 
 | 版本 | 目录 | 引擎 | 模型 | 推荐度 |
-|---
+|------|------|------|------|--------|
+| **PP-OCRv6** | `umi_plugin_v6/` | Python + ONNX Runtime | PP-OCRv6（自动下载） | ⭐ 推荐 |
+| PP-OCRv5 | 仓库根目录 | C++（PaddleOCR-json.exe） | PP-OCRv5（手动下载） | 历史版本 |
 
-# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v2.0
+---
+
+# PP-OCRv6 插件（ONNX Runtime 版）⭐ 推荐
 
 基于 [PaddleOCR 3.7.0](https://github.com/PaddlePaddle/PaddleOCR) + [ONNX Runtime](https://onnxruntime.ai/) 的 Umi-OCR 插件，使用最新的 **PP-OCRv6** 模型。
 
