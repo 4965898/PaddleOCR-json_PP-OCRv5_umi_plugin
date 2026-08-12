@@ -1,18 +1,18 @@
-# UmiOCR PP-OCRv6 ONNX Plugin（v1.9）
+# UmiOCR PP-OCRv6 ONNX Plugin（v2.0）
 
 本仓库包含两个版本的 Umi-OCR PaddleOCR 插件：
 
 | 版本 | 目录 | 引擎 | 模型 | 推荐度 |
 |---
 
-# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v1.9
+# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v2.0
 
 基于 [PaddleOCR 3.7.0](https://github.com/PaddlePaddle/PaddleOCR) + [ONNX Runtime](https://onnxruntime.ai/) 的 Umi-OCR 插件，使用最新的 **PP-OCRv6** 模型。
 
 ## 特性
 
 - **PP-OCRv6 模型**：基于 PPLCNetV4 统一骨干网络，识别精度大幅提升
-- **表格识别（v1.9 新增）**：结构化表格 → HTML 表格源码，基于 PP-DocLayout_plus-L 布局检测 + SLANet_plus 表格结构识别 + PP-OCRv6 单元格文字识别，全部 ONNX 模型，**零新增依赖**（无需安装额外 pip 包）
+- **表格识别（v2.0 新增）**：设置界面开关 + 输出格式下拉菜单（HTML/TSV），识别到表格时自动输出表格格式文本（粘贴 Excel 直接成表）；也可通过 API 独立调用。基于 PP-DocLayout_plus-L 布局检测 + SLANet_plus 表格结构识别 + PP-OCRv6 单元格文字识别，全部 ONNX 模型，**零新增依赖**（无需安装额外 pip 包）
 - **ONNX Runtime 引擎**：轻量、易部署，绕过 paddlepaddle 的 oneDNN 兼容性问题
 - **自动下载模型**：首次使用时自动下载所选尺寸的 ONNX 模型到插件目录，无需手动下载
 - **两档模型**：medium（高精度）/ small（快速），可随时切换
@@ -178,6 +178,17 @@ Umi-OCR/
 >
 > **示例**：识别包含 `Item/Qty/Price + Apple/3/1.5...` 的表格图片，`html` 输出为 `<table><tbody><tr><td>Item</td><td>Qty</td><td>Price</td></tr>...`，`cells` 中每个单元格的坐标与文字一一对应。
 
+### 表格识别开关（v2.0 新增）
+
+在插件设置「竖排文字模式」下方新增两个设置项，可在标准 OCR 流程中直接输出表格格式文本，无需单独调用 API：
+
+| 设置项 | 选项 | 说明 |
+|--------|------|------|
+| 表格识别 | 关闭 / 开启 | 开关。开启后，识别图片中的表格时输出表格格式文本；纯文本保持原样；无表格的图片行为不变。默认关闭，不影响普通识别速度。首次使用时自动下载表格模型（约 131MB） |
+| 表格输出格式 | HTML（表格源码）/ TSV（制表符分隔）/ 关闭 | 下拉菜单。「表格识别」开启时生效：HTML 输出 `<table>` 源码，适合嵌入网页/富文本；TSV 为制表符分隔文本，粘贴到 Excel/WPS 可直接成表；关闭等效于关闭表格识别 |
+
+开启后识别结果中，检测到的表格会以**单个文本块**输出（`is_table: true`），表格区域内的单元格文字不再重复输出；表格外文本保持原有逐行输出。竖排文字模式下，表格块作为整体参与重排。
+
 ### 性能优化建议
 
 - **日常截图文字**：选 small + 限制图像边长 640 + 批处理数 16，速度最快
@@ -304,6 +315,12 @@ A: 在 Umi-OCR 的插件设置中切换「模型尺寸」。切换后会重新�
 - [Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) - 免费开源的 OCR 软件
 
 ## 更新日志
+
+### v2.0
+
+- **设置界面新增「表格识别」开关**（回应 issue #12 需求）：位于插件设置「竖排文字模式」下方（与「启用GPU加速」同一区域）。开启后，标准 OCR 流程自动检测图片中的表格，并以**单个文本块**输出表格格式文本（`is_table: true`），表格区内单元格文字自动去重（不重复输出）；纯文本与无表格图片行为与原来完全一致。默认关闭，不影响普通识别速度。
+- **新增「表格输出格式」下拉菜单**：与开关独立，可选 **HTML（表格源码）** / **TSV（制表符分隔）** / **关闭**。HTML 适合嵌入网页/富文本；TSV 粘贴到 Excel/WPS 直接成表。选「关闭」等效于关闭表格识别。
+- 表格块坐标取自 layout 检测的 table 区域（4 点多边形），按中心 y 与普通文本混排；`runTablePath` 等独立 API 保持不变。
 
 ### v1.9
 

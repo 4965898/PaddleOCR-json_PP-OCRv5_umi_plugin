@@ -42,3 +42,9 @@ PDF文本层精对齐,PDF text layer alignment,PDF文本層精對齊,PDFテキ�
 [Error] 引擎路径不存在: "{0}","[Error] Engine path does not exist: ""{0}""","[Error] 引擎路徑不存在: ""{0}""","[Error] エンジンパスが存在しません: ""{0}"""
 [Error] OCR 初始化失败。配置: {0}; {1},"[Error] OCR init failed. Config: {0}; {1}","[Error] OCR 初始化失敗。配置: {0}; {1}","[Error] OCR 初期化失敗。設定: {0}; {1}"
 重启引擎失败: {0},Engine restart failed: {0},重啟引擎失敗: {0},エンジン再起動失敗: {0}
+表格识别,Table recognition,表格識別,テーブル認識
+启用后，识别图片中的表格时输出表格格式文本（HTML 或 TSV），纯文本保持原样。首次使用表格识别时自动下载表格模型（约 131MB）。默认关闭，不影响普通识别速度。,"When enabled, tables in images are output as formatted table text (HTML or TSV), plain text stays as-is. Table models (~131MB) auto-download on first table use. Off by default; normal recognition speed unaffected.",啟用後，識別圖片中的表格時輸出表格格式文本（HTML 或 TSV），純文本保持原樣。首次使用表格識別時自動下載表格模型（約 131MB）。預設關閉，不影響一般辨識速度。,有効にすると、画像内のテーブルをフォーマット済みテーブルテキスト（HTMLまたはTSV）として出力し、プレーンテキストはそのまま出力します。初回のテーブル使用時にテーブルモデル（約131MB）を自動ダウンロードします。デフォルトはオフで、通常の認識速度には影響しません。
+表格输出格式,Table output format,表格輸出格式,テーブル出力形式
+"表格识别"开启时生效。HTML：输出 <table> 源码，适合嵌入网页/富文本；TSV：制表符分隔文本，粘贴到 Excel/WPS 可直接成表；关闭：不输出表格格式（与关闭"表格识别"等效）。,"Effective when ""Table recognition"" is on. HTML: outputs <table> source, suitable for embedding in web/rich text. TSV: tab-separated text, paste directly into Excel/WPS as a table. Off: no table format output (equivalent to disabling ""Table recognition"").","「表格識別」開啟時生效。HTML：輸出 <table> 原始碼，適合嵌入網頁/富文本；TSV：以定位點分隔的文字，貼上到 Excel/WPS 可直接成表；關閉：不輸出表格格式（與關閉「表格識別」等效）。","「テーブル認識」が有効な場合に有効。HTML：<table>ソースを出力、Web/リッチテキストへの埋め込みに最適。TSV：タブ区切りテキスト、Excel/WPSに貼り付けるとそのまま表になります。オフ：テーブル形式を出力しません（「テーブル認識」をオフにしたのと同等）。"
+HTML（表格源码）,HTML (table source),HTML（表格原始碼）,HTML（テーブルソース）
+TSV（制表符分隔）,TSV (tab-separated),TSV（定位點分隔）,TSV（タブ区切り）

@@ -27,6 +27,9 @@ ExeConfigs = [
     ("cpu_threads", "cpu_threads"),
     # A1: det 框内缩比例，传给 server.py，0=关闭
     ("shrink_poly_ratio", "shrink_poly_ratio"),
+    # 表格识别：开关 + 输出格式（html / tsv / off）
+    ("table_mode", "table_mode"),
+    ("table_format", "table_format"),
 ]
 
 

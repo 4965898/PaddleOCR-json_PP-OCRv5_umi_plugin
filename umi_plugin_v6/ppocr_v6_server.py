@@ -34,6 +34,10 @@ _shrink_ratio = 0.0
 _table_pipe = None
 _table_model_size = "small"
 _patched_table_deps = False
+# 表格识别开关（设置界面）：True 时 run_ocr 自动检测表格并输出格式文本
+_table_mode = False
+# 表格输出格式：html / tsv
+_table_format = "html"
 
 
 def _setup_nvidia_dlls():
@@ -403,6 +407,9 @@ def init_ocr(args):
     lang = config["lang"]
     global _table_model_size
     _table_model_size = model_size
+    global _table_mode, _table_format
+    _table_mode = bool(getattr(args, "table_mode", False))
+    _table_format = str(getattr(args, "table_format", "html") or "html").lower()
     det = args.det if args.det is not None else True
     cls = args.cls if args.cls is not None else False
     rec_batch_num = args.rec_batch_num or 6
@@ -651,6 +658,28 @@ def run_ocr(cmd):
                         box = [[0, 0], [0, 0], [0, 0], [0, 0]]
                     data_list.append({"box": box, "text": text, "score": score})
 
+            # 表格识别开关开启且格式非"关闭"：检测表格，输出格式文本并过滤表格区内重复文本
+            if _table_mode and _table_format != "off":
+                table_blocks, table_polys = _run_ocr_with_table(input_data)
+                if table_blocks:
+                    import numpy as _np
+                    for item in data_list:
+                        if not table_polys:
+                            break
+                        try:
+                            pts = _np.asarray(item.get("box"), dtype=float)
+                            if pts.ndim == 2 and pts.shape[0] >= 3:
+                                cx = float(pts[:, 0].mean())
+                                cy = float(pts[:, 1].mean())
+                                if any(_point_in_poly(cx, cy, p) for p in table_polys):
+                                    item["_drop"] = True
+                        except Exception:
+                            pass
+                    data_list = [i for i in data_list if not i.get("_drop")]
+                    # 表格块按位置插入（按 bbox 中心 y 排序），与普通文本混排
+                    data_list.extend(table_blocks)
+                    data_list.sort(key=lambda i: _block_center_y(i))
+
             if not data_list:
                 return {"code": 101, "data": f'No text found in image. Path:"{input_data}"'}
             return {"code": 100, "data": data_list}
@@ -837,6 +866,117 @@ def _collect_table_results(page):
     }
 
 
+def _html_to_tsv(html):
+    """把 <table> HTML 源码转成 TSV（制表符分隔）文本。
+
+    每行一个 <tr>，行内单元格用制表符分隔；剥离单元格内嵌标签与 HTML 实体。
+    供「表格输出格式=TSV」时输出，粘贴到 Excel/WPS 可直接成表。
+    """
+    import re
+    rows = re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S | re.I)
+    lines = []
+    for row in rows:
+        cells = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.S | re.I)
+        line = []
+        for c in cells:
+            c = re.sub(r"<[^>]+>", "", c)
+            for ent, rep in (("&nbsp;", " "), ("&amp;", "&"), ("&lt;", "<"),
+                             ("&gt;", ">"), ("&quot;", '"'), ("&#39;", "'")):
+                c = c.replace(ent, rep)
+            line.append(c.strip())
+        lines.append("\t".join(line))
+    return "\n".join(lines)
+
+
+def _point_in_poly(px, py, poly):
+    """射线法判断点是否在多边形内（表格区域过滤用）。"""
+    if poly is None or len(poly) < 3:
+        return False
+    inside = False
+    n = len(poly)
+    for i in range(n):
+        x1, y1 = poly[i][0], poly[i][1]
+        x2, y2 = poly[(i + 1) % n][0], poly[(i + 1) % n][1]
+        if (y1 > py) != (y2 > py):
+            x_cross = x1 + (py - y1) * (x2 - x1) / (y2 - y1)
+            if px < x_cross:
+                inside = not inside
+    return inside
+
+
+def _block_center_y(item):
+    """文本块 bbox 中心 y（按行序混排表格块与普通文本时排序用）。"""
+    box = item.get("box") or []
+    try:
+        if len(box) == 4 and isinstance(box[0], (list, tuple)) and len(box[0]) == 2:
+            return sum(p[1] for p in box) / 4.0
+    except Exception:
+        pass
+    return 0.0
+
+
+def _run_ocr_with_table(input_data):
+    """表格识别开关开启时：对图片做表格检测。
+
+    若检测到表格，返回 (表格文本块列表, 表格区域多边形列表)；否则返回 (None, None)。
+    表格块 text 为所选格式（html/tsv）拼接文本，box 为该表格区域 4 点坐标。
+    调用方负责过滤落在表格区域内的普通 OCR 文本块，避免重复输出。
+    """
+    global _table_pipe
+    try:
+        try:
+            pipe = _get_table_pipeline()
+        except Exception as e:
+            print(f"[ppocr_v6] table pipeline init failed: {e}", file=sys.stderr, flush=True)
+            return None, None
+        t_result = list(pipe.predict(input_data))
+        if not t_result:
+            return None, None
+        data = _collect_table_results(t_result[0])
+        tables = data.get("tables", [])
+        if not tables:
+            return None, None
+        # 表格区域坐标来自 layout_det_res（label 含 "table"），table_res_list 本身无 bbox
+        page = t_result[0]
+        res = page.json.get("res", {}) if hasattr(page, "json") else page
+        layout = res.get("layout_det_res", {}) or {}
+        table_boxes = [
+            b.get("coordinate", []) for b in (layout.get("boxes", []) or [])
+            if str(b.get("label", "")).lower().startswith("table")
+        ]
+        blocks = []
+        table_polys = []
+        for i, t in enumerate(tables):
+            fmt = _table_format
+            if fmt == "tsv":
+                text = _html_to_tsv(t.get("html", ""))
+            else:
+                text = t.get("html", "")
+            if not text.strip():
+                continue
+            # 优先 layout 表格区域坐标；转成 4 点多边形供协议输出
+            box = t.get("box") or []
+            if i < len(table_boxes):
+                box = table_boxes[i] or box
+            pts = []
+            if len(box) == 4 and all(isinstance(v, (int, float)) for v in box):
+                x1, y1, x2, y2 = (float(v) for v in box)
+                pts = [[x1, y1], [x2, y1], [x2, y2], [x1, y2]]
+            elif len(box) == 4 and isinstance(box[0], (list, tuple)) and len(box[0]) == 2:
+                pts = [[int(p[0]), int(p[1])] for p in box]
+            blocks.append({"box": pts, "text": text, "score": 1.0, "is_table": True})
+            if pts:
+                table_polys.append(pts)
+        if not blocks:
+            return None, None
+        print(f"[ppocr_v6] table mode: {len(blocks)} table(s) detected, format={_table_format}",
+              file=sys.stderr, flush=True)
+        return blocks, table_polys
+    except Exception as e:
+        print(f"[ppocr_v6] table mode skipped: {e}", file=sys.stderr, flush=True)
+        return None, None
+
+
 def run_table(cmd):
     """执行表格识别命令：{"image_path": "...", "table": true}。
 
@@ -896,6 +1036,10 @@ def main():
     parser.add_argument("--use_angle_cls", default=None)
     # A1: det 框内缩比例，抵消 DBNet expand_ratio，改善 PDF 文本层对齐。0=关闭
     parser.add_argument("--shrink_poly_ratio", type=float, default=0.0)
+    # 表格识别（设置界面开关）：0/1 开启后 run_ocr 自动输出表格格式文本
+    parser.add_argument("--table_mode", type=lambda x: str(x).lower() in ("1", "true", "yes", "on"), default=False)
+    # 表格输出格式：html / tsv / off（off 等效于未开启）
+    parser.add_argument("--table_format", type=str, default="html")
 
     args, _ = parser.parse_known_args()
 

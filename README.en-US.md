@@ -1,4 +1,4 @@
-# UmiOCR PP-OCRv6 ONNX Plugin (v1.9)
+# UmiOCR PP-OCRv6 ONNX Plugin (v2.0)
 
 This repository contains two versions of the Umi-OCR PaddleOCR plugin:
 
@@ -314,7 +314,14 @@ To use "Fast" mode, you must download the PP-OCRv5 mobile_rec model:
 
 ## Changelog
 
+### v2.0
+
+- **Added Table Recognition switch in settings UI** (addressing issue #12): located below Vertical Text Mode in plugin settings (same area as Enable GPU Acceleration). When enabled, the standard OCR flow auto-detects tables in images and outputs the table as a **single text block** (is_table: true); cell text inside the table region is deduplicated (not output twice); plain text and images without tables behave exactly as before. Off by default; normal recognition speed unaffected.
+- **Added Table Output Format dropdown** (independent of the switch): options are **HTML (table source)** / **TSV (tab-separated)** / **Off**. HTML is suitable for embedding in web/rich text; TSV pastes directly into Excel/WPS as a table. Choosing Off is equivalent to disabling table recognition.
+- Table block coordinates come from the layout-detected table region (4-point polygon), interleaved with plain text by center-y; the standalone runTablePath etc. APIs remain unchanged.
+
 ### v1.9
+
 
 - **Added Table Recognition**: Recognize structured tables in images as HTML table source. Based on `PP-DocLayout_plus-L` (layout analysis) + `SLANet_plus` (table structure) + PP-OCRv6 (cell text recognition), all using **ONNX models + onnxruntime engine**, **zero new dependencies** (no extra pip packages required; ~131MB of table models auto-downloaded on first use).
   - New plugin API entries `runTablePath` / `runTableBytes` / `runTableBase64`, input identical to normal OCR; returns `{code, data: {html, tables}}`, where `tables[].cells[]` contains cell coordinates `box` and text `text`.

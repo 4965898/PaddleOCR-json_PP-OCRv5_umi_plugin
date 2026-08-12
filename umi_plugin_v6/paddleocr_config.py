@@ -56,6 +56,21 @@ localOptions = {
         "default": False,
         "toolTip": tr("启用后，识别结果将按竖排阅读顺序重排：从右到左逐列，每列从上到下。适用于竖排繁体中文等场景。"),
     },
+    "table_mode": {
+        "title": tr("表格识别"),
+        "default": False,
+        "toolTip": tr("启用后，识别图片中的表格时输出表格格式文本（HTML 或 TSV），纯文本保持原样。首次使用表格识别时自动下载表格模型（约 131MB）。默认关闭，不影响普通识别速度。"),
+    },
+    "table_format": {
+        "title": tr("表格输出格式"),
+        "optionsList": [
+            ["html", tr("HTML（表格源码）")],
+            ["tsv", tr("TSV（制表符分隔）")],
+            ["off", tr("关闭")],
+        ],
+        "default": "html",
+        "toolTip": tr('"表格识别"开启时生效。HTML：输出 <table> 源码，适合嵌入网页/富文本；TSV：制表符分隔文本，粘贴到 Excel/WPS 可直接成表；关闭：不输出表格格式（与关闭"表格识别"等效）。'),
+    },
     "cpu_threads": {
         "title": tr("CPU线程数"),
         "default": 0,
