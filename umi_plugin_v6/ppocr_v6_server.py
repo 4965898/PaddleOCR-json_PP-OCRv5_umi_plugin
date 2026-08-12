@@ -10,6 +10,7 @@ import argparse
 import base64
 import tempfile
 import gc
+import time
 
 # 强制 stdin/stdout 使用 UTF-8 编码，避免 Windows 下中文乱码
 sys.stdout.reconfigure(encoding="utf-8")
@@ -38,6 +39,18 @@ _patched_table_deps = False
 _table_mode = False
 # 表格输出格式：html / tsv
 _table_format = "html"
+
+# 表格管道生命周期管理（避免表格模型常驻显存约 0.6GB）：
+#   连续 _TABLE_NO_TABLE_LIMIT 页无表格 → 销毁管道（设冷却）；
+#   空闲 _TABLE_IDLE_TIMEOUT 秒 → 销毁管道（不设冷却）；
+#   销毁后 _TABLE_DESTROY_COOLDOWN 秒冷却期防"销毁-重建"抖动
+#   （仅连续无表格销毁才设冷却；空闲销毁/引擎重建不设，下张图可立即重建检测）。
+_TABLE_NO_TABLE_LIMIT = 5
+_TABLE_IDLE_TIMEOUT = 60.0
+_TABLE_DESTROY_COOLDOWN = 30.0
+_table_no_table_streak = 0           # 连续无表格页数（检测到表格时重置）
+_table_last_used = 0.0               # 上次使用/创建表格管道的时间（time.monotonic）
+_table_destroy_cooldown_until = 0.0  # 销毁冷却截止时间
 
 
 def _setup_nvidia_dlls():
@@ -80,6 +93,10 @@ _page_count = 0  # 已处理页数计数器，达阈值时重建 session 释放 
 # 每 N 页重建一次 ORT session，强制释放 BFC arena 累积的显存碎片。
 # 8GB 显卡建议 50；更小显存可调小至 30，更大显存可调大到 100。
 _REBUILD_PAGE_THRESHOLD = 50
+# DirectML 后端周期重建阈值：DML 的 DmlExecutionProvider 使用 pooled allocator
+# 池化 DX12 堆，长任务会持续累积不归还（表现为显存只增不减）。每 30 页重建一次
+# session 强制归还；比 CUDA/CPU 更激进（DML 无 BFC arena，只能靠销毁 session 释放）。
+_REBUILD_PAGE_THRESHOLD_DML = 30
 
 
 def _cleanup_gpu_memory():
@@ -168,6 +185,8 @@ def _rebuild_ocr():
     if _init_args is None:
         return False
     try:
+        # 顺带销毁表格管道（不设冷却，下张图可立即重建检测），释放其占用的显存
+        _destroy_table_pipeline("engine rebuild", set_cooldown=False)
         _ocr = None
         _recognizer = None
         gc.collect()
@@ -585,17 +604,22 @@ def _validate_rec_polys(rec_polys, dt_polys, texts):
 
 
 def run_ocr(cmd):
-    global _ocr, _recognizer, _page_count
+    global _ocr, _recognizer, _page_count, _table_no_table_streak
     if _ocr is None and _recognizer is None:
         return {"code": 901, "data": "引擎未初始化"}
 
-    # 周期性重建 ORT session：每 N 页重建一次，强制释放 BFC arena 累积的显存碎片。
-    # 否则跑长 PDF 时 arena 会被前面页的 buffer 占满，最后几页找不到连续空间报
-    # BFCArena::AllocateRawInternal 错误（FusedMatMul / BiasSoftmax 节点申请失败）。
-    # DirectML 无 BFC arena（显存由 DX12 驱动按需分配），无需重建；CUDA 重建释放
-    # BFC 碎片，CPU 重建释放 ORT CPU arena 碎片，二者保留。
+    # 表格管道生命周期管理（顶层检查）：空闲超时销毁。放在顶层即使用户已关闭
+    # 表格开关，也能释放残留的表格管道显存（约 0.6GB）。
+    if _table_pipe is not None and (time.monotonic() - _table_last_used) >= _TABLE_IDLE_TIMEOUT:
+        _destroy_table_pipeline("idle %.0fs" % _TABLE_IDLE_TIMEOUT, set_cooldown=False)
+
+    # 周期性重建 ORT session：按后端选阈值，强制释放显存碎片。
+    # DirectML 每 30 页重建，归还 DmlExecutionProvider pooled allocator 池化的 DX12 堆
+    # （解决 DML 下显存持续增大、不回收）；CUDA 每 50 页重建释放 BFC arena 碎片，
+    # CPU 每 50 页重建释放 ORT CPU arena 碎片。
     _page_count += 1
-    if _gpu_backend != "directml" and _page_count >= _REBUILD_PAGE_THRESHOLD:
+    _rebuild_threshold = _REBUILD_PAGE_THRESHOLD_DML if _gpu_backend == "directml" else _REBUILD_PAGE_THRESHOLD
+    if _page_count >= _rebuild_threshold:
         _rebuild_ocr()
 
     # BFC arena 失败时自动重建并重试一次。
@@ -660,7 +684,11 @@ def run_ocr(cmd):
 
             # 表格识别开关开启且格式非"关闭"：检测表格，输出格式文本并过滤表格区内重复文本
             if _table_mode and _table_format != "off":
-                table_blocks, table_polys = _run_ocr_with_table(input_data)
+                # 销毁冷却期内跳过自动检测，避免"销毁-重建"抖动（显式 run_table 不受此限）
+                if _table_pipe is None and time.monotonic() < _table_destroy_cooldown_until:
+                    table_blocks, table_polys = None, None
+                else:
+                    table_blocks, table_polys = _run_ocr_with_table(input_data)
                 if table_blocks:
                     import numpy as _np
                     for item in data_list:
@@ -679,6 +707,13 @@ def run_ocr(cmd):
                     # 表格块按位置插入（按 bbox 中心 y 排序），与普通文本混排
                     data_list.extend(table_blocks)
                     data_list.sort(key=lambda i: _block_center_y(i))
+                    _table_no_table_streak = 0  # 检测到表格，重置连续无表格计数
+                elif _table_pipe is not None:
+                    # 无表格（管道仍存在）：累加连续无表格计数，达阈值则销毁释放显存
+                    _table_no_table_streak += 1
+                    if _table_no_table_streak >= _TABLE_NO_TABLE_LIMIT:
+                        _destroy_table_pipeline(
+                            "no-table streak %d" % _TABLE_NO_TABLE_LIMIT, set_cooldown=True)
 
             if not data_list:
                 return {"code": 101, "data": f'No text found in image. Path:"{input_data}"'}
@@ -753,6 +788,29 @@ def _patch_table_deps():
               file=sys.stderr, flush=True)
 
 
+def _destroy_table_pipeline(reason, set_cooldown=True):
+    """销毁表格识别管道，释放其占用的显存（约 0.6GB）。
+
+    set_cooldown=True（连续无表格销毁）时设 30 秒冷却期，期间自动检测路径不重建
+    管道，避免"销毁-重建"抖动；set_cooldown=False（空闲销毁 / 引擎重建）不设冷却，
+    下一张含表格的图片可立即重建检测。销毁原因输出到 stderr 便于用户确认。
+    """
+    global _table_pipe, _table_no_table_streak, _table_destroy_cooldown_until
+    if _table_pipe is None:
+        return
+    _table_pipe = None
+    _table_no_table_streak = 0
+    gc.collect()
+    _cleanup_gpu_memory()
+    if set_cooldown:
+        _table_destroy_cooldown_until = time.monotonic() + _TABLE_DESTROY_COOLDOWN
+        print(f"[ppocr_v6] table pipeline destroyed ({reason}), "
+              f"cooldown {_TABLE_DESTROY_COOLDOWN:.0f}s", file=sys.stderr, flush=True)
+    else:
+        print(f"[ppocr_v6] table pipeline destroyed ({reason}), no cooldown",
+              file=sys.stderr, flush=True)
+
+
 def _get_table_pipeline():
     """懒加载 paddlex table_recognition 管道（v1：布局 + SLANet_plus + PP-OCRv6）。
 
@@ -764,8 +822,9 @@ def _get_table_pipeline():
     与现有的轻量 OCR 路径一致。
     复用 init_ocr 时的 engine_config（CUDA/DirectML/CPU 全兼容）。
     """
-    global _table_pipe
+    global _table_pipe, _table_last_used
     if _table_pipe is not None:
+        _table_last_used = time.monotonic()  # 复用时刷新，驱动空闲超时计数
         return _table_pipe
     _patch_table_deps()
     from paddlex import create_pipeline
@@ -791,6 +850,7 @@ def _get_table_pipeline():
     print(f"[ppocr_v6] creating table pipeline (layout+SLANet_plus+{det_model}/{rec_model}, "
           f"engine={engine})...", file=sys.stderr, flush=True)
     _table_pipe = create_pipeline(**kwargs)
+    _table_last_used = time.monotonic()  # 创建时记录，作为空闲计时的起点
     print("[ppocr_v6] table pipeline ready.", file=sys.stderr, flush=True)
     return _table_pipe
 
