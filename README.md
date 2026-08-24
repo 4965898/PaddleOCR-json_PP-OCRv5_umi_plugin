@@ -562,3 +562,15 @@ git clone https://github.com/OneDongua/PaddleOCR-json_PP-OCRv5_umi_plugin.git
 - 仅在确有旋转文本时开启 `纠正文本方向`，否则保持关闭以减少额外开销。
 - 单行文本可关闭 `启用文本检测` 以跳过检测阶段，显著加速。
 - 长时间批量识别时，按机器内存情况设置 `内存占用限制` 和 `内存闲时清理`，减少内存膨胀引起的性能抖动。
+
+---
+
+## 赞助支持
+
+如果本插件对你有帮助，欢迎扫码打赏支持（支付宝）：
+
+<p align="center">
+  <img src="docs/images/alipay.jpg" alt="支付宝赞赏码" width="240">
+</p>
+
+您的支持是我持续维护与更新的动力，感谢！
