@@ -92,7 +92,9 @@ _init_args = None  # 保存 init_ocr 的 args，供周期性重建 ORT session �
 _page_count = 0  # 已处理页数计数器，达阈值时重建 session 释放 BFC arena 碎片
 # 每 N 页重建一次 ORT session，强制释放 BFC arena 累积的显存碎片。
 # 8GB 显卡建议 50；更小显存可调小至 30，更大显存可调大到 100。
-_REBUILD_PAGE_THRESHOLD = 50
+# 本机实测：系统 commit 内存紧张时（32GB 内存 + 8GB 页面文件），第 41 页出现
+# numpy Unable to allocate 报错，50 页重建来不及。调小至 30 提前释放累积内存。
+_REBUILD_PAGE_THRESHOLD = 30
 # DirectML 后端周期重建阈值：DML 的 DmlExecutionProvider 使用 pooled allocator
 # 池化 DX12 堆，长任务会持续累积不归还（表现为显存只增不减）。每 30 页重建一次
 # session 强制归还；比 CUDA/CPU 更激进（DML 无 BFC arena，只能靠销毁 session 释放）。
@@ -674,6 +676,13 @@ def run_ocr(cmd):
                         polys = dt_polys
                 for i, text in enumerate(texts):
                     score = float(scores[i]) if i < len(scores) else 0.0
+                    # 过滤空/纯空白文本块：det 在（近）空白页上可能检出框但 rec 返回
+                    # 空字符串，原样输出会触发 Umi-OCR「多栏-自然段」后处理崩溃
+                    # （linePreprocessing 过滤空文本块后 median 空列表抛 StatisticsError，
+                    # issue #13）。过滤后空白页自然落入下方 code 101 分支，
+                    # Umi-OCR 对空结果跳过 tbpu 后处理，不再崩溃。
+                    if text is None or not str(text).strip():
+                        continue
                     if polys is not None and i < len(polys):
                         poly = polys[i]
                         # A1: 向重心内缩，抵消 DBNet expand_ratio，让 box 更贴字
