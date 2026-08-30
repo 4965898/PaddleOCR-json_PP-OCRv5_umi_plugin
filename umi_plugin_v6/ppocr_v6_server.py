@@ -30,6 +30,11 @@ _det = True
 # det 框内缩比例（抵消 DBNet expand_ratio，让 box 更贴合真实文字，改善 PDF 文本层对齐）
 # 0 表示不收缩；典型值 0.08~0.12（各点向重心移动该比例，框宽高约收缩 2 倍该值）
 _shrink_ratio = 0.0
+# 识别置信度阈值（仅 det 路径）：低于该分数的文本块不输出。
+# 对齐官方 PaddleOCR-json 的 drop_score=0.5 行为：det 在（近）空白页检出的噪点框，
+# rec 常返回低分垃圾字符（"|"、"。"等），不过滤会污染结果并可能触发 Umi-OCR
+# 「多栏-自然段」后处理崩溃（issue #13）。
+_drop_score = 0.5
 
 # 表格识别（懒加载）：首次收到表格命令时才创建 paddlex table_recognition 管道
 _table_pipe = None
@@ -417,6 +422,8 @@ def parse_config(args):
 def init_ocr(args):
     global _ocr, _recognizer, _det, _use_gpu, _shrink_ratio, _engine, _gpu_backend, _init_args
     _init_args = args  # 保存以供周期性重建 ORT session 使用
+    global _drop_score
+    _drop_score = max(0.0, float(getattr(args, "drop_score", 0.5) if getattr(args, "drop_score", None) is not None else 0.5))
     # 必须在 import paddleocr 之前添加 NVIDIA DLL 路径。
     # 否则 paddleocr/paddlex 导入过程会干扰后续 ORT CUDA 加载 cuDNN，
     # 导致 "Invalid handle. Cannot load symbol cudnnCreate" 错误。
@@ -564,6 +571,48 @@ def _shrink_poly(poly, ratio):
         return [[int(p[0]), int(p[1])] for p in poly]
 
 
+def _ensure_valid_box(box):
+    """校验并修复文本块 box，保证交给 Umi-OCR 的框不会是退化框。
+
+    退化框（四点完全重合、零宽或零高，如全零兜底框 [[0,0]]x4、极小 det 噪点框
+    经收缩+整数化塌缩）会让 Umi-OCR「多栏-自然段」的 GapTree 间隙树抛
+    IndexError（实证见 test_tbpu_compat.py F/F2，issue #13）。
+
+    返回值：
+      - 结构合法的框：原样返回（不改变正常框的形状）；
+      - 塌缩但坐标合法的框：扩展为同中心的 1x1 以上包围盒；
+      - 结构非法（点数/坐标异常）：返回 None，调用方应跳过该块。
+    """
+    try:
+        if not isinstance(box, (list, tuple)) or len(box) != 4:
+            return None
+        pts = []
+        for p in box:
+            if not isinstance(p, (list, tuple)) or len(p) != 2:
+                return None
+            x, y = float(p[0]), float(p[1])
+            if x != x or y != y or x in (float("inf"), float("-inf")) \
+                    or y in (float("inf"), float("-inf")):
+                return None
+            pts.append((x, y))
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+        if x1 - x0 < 1 or y1 - y0 < 1:
+            # 塌缩框：扩展为 ≥1x1 的包围盒（视觉上仍是原地的一个点，但结构合法）
+            if x1 - x0 < 1:
+                pad = (1 - (x1 - x0)) / 2.0
+                x0, x1 = x0 - pad, x1 + pad
+            if y1 - y0 < 1:
+                pad = (1 - (y1 - y0)) / 2.0
+                y0, y1 = y0 - pad, y1 + pad
+            return [[int(round(x0)), int(round(y0))], [int(round(x1)), int(round(y0))],
+                    [int(round(x1)), int(round(y1))], [int(round(x0)), int(round(y1))]]
+        return box
+    except Exception:
+        return None
+
+
 def _validate_rec_polys(rec_polys, dt_polys, texts):
     """校验 rec_polys 是否为原图坐标，决定是否优先使用。
 
@@ -683,12 +732,22 @@ def run_ocr(cmd):
                     # Umi-OCR 对空结果跳过 tbpu 后处理，不再崩溃。
                     if text is None or not str(text).strip():
                         continue
+                    # 低分过滤（仅 det 路径）：det 在（近）空白页检出的噪点框，rec 常返回
+                    # 低分垃圾字符（"|"、"。"等），对齐官方 PaddleOCR-json 的
+                    # drop_score=0.5 行为（issue #13）。rec-only 为用户显式单行识别，不过滤。
+                    if _det and score < _drop_score:
+                        continue
                     if polys is not None and i < len(polys):
                         poly = polys[i]
                         # A1: 向重心内缩，抵消 DBNet expand_ratio，让 box 更贴字
                         box = _shrink_poly(poly, _shrink_ratio)
                     else:
                         box = [[0, 0], [0, 0], [0, 0], [0, 0]]
+                    # 退化框校验/修复：全零兜底框或极小 det 框经收缩+整数化后四点重合，
+                    # 会让 Umi-OCR「多栏-自然段」的 GapTree 抛 IndexError（issue #13）。
+                    box = _ensure_valid_box(box)
+                    if box is None:
+                        continue
                     data_list.append({"box": box, "text": text, "score": score})
 
             # 表格识别开关开启且格式非"关闭"：检测表格，输出格式文本并过滤表格区内重复文本
@@ -1033,6 +1092,10 @@ def _run_ocr_with_table(input_data):
                 pts = [[x1, y1], [x2, y1], [x2, y2], [x1, y2]]
             elif len(box) == 4 and isinstance(box[0], (list, tuple)) and len(box[0]) == 2:
                 pts = [[int(p[0]), int(p[1])] for p in box]
+            # 校验 box 结构：layout 未给出合法区域时跳过该表格块，
+            # 避免空 box 在 Umi-OCR mission_doc 坐标换算时触发 IndexError（issue #13）
+            if len(pts) != 4:
+                continue
             blocks.append({"box": pts, "text": text, "score": 1.0, "is_table": True})
             if pts:
                 table_polys.append(pts)
@@ -1105,6 +1168,8 @@ def main():
     parser.add_argument("--use_angle_cls", default=None)
     # A1: det 框内缩比例，抵消 DBNet expand_ratio，改善 PDF 文本层对齐。0=关闭
     parser.add_argument("--shrink_poly_ratio", type=float, default=0.0)
+    parser.add_argument("--drop_score", type=float, default=0.5,
+                        help="识别置信度阈值（仅 det 路径），低于该分数的文本块不输出，0=不过滤")
     # 表格识别（设置界面开关）：0/1 开启后 run_ocr 自动输出表格格式文本
     parser.add_argument("--table_mode", type=lambda x: str(x).lower() in ("1", "true", "yes", "on"), default=False)
     # 表格输出格式：html / tsv / off（off 等效于未开启）
