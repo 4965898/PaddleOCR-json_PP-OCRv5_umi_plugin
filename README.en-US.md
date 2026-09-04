@@ -31,7 +31,7 @@ A Umi-OCR plugin based on [PaddleOCR 3.7.0](https://github.com/PaddlePaddle/Padd
 ## Environment Requirements
 
 - **Umi-OCR**: Paddle v2.1.5 or higher.
-- **Python**: **No pre-installation needed** (`install.bat` auto-downloads a portable Python); if Python 3.10+ is already installed, it will be used directly.
+- **Python**: **No pre-installation needed** (`install.bat` auto-downloads a portable Python); if Python **3.10 - 3.13** is already installed, it will be used directly; **3.9 or below / 3.14 or above** will automatically fall back to the portable version (see below).
 - **OS**: Windows 10/11 x64.
 - **Disk Space**: Approx. 500MB (virtual environment) + model files (default small ~30MB, optional medium ~130MB, table recognition ~131MB, downloaded on demand).
 
@@ -47,7 +47,8 @@ Umi-OCR/
     └── plugins/
         └── umi_plugin_v6/            ← Copy here
             ├── install.bat            ← CPU installation script
-            ├── install_gpu.bat        ← NVIDIA GPU acceleration script
+            ├── install_gpu.bat        ← NVIDIA GPU acceleration script (non-RTX 50)
+            ├── install_gpu_rtx50.bat  ← NVIDIA RTX 50 series only (CUDA 13)
             ├── install_directml.bat   ← DirectML (Intel Arc/AMD) script
             ├── PaddleOCR-json.bat     ← Launch script
             ├── ppocr_v6_server.py     ← OCR + table recognition server
@@ -67,14 +68,15 @@ Umi-OCR/
 ### Step 2: Install Environment (Out-of-the-box, no Python pre-install needed)
 
 Double-click `install.bat`. The script will automatically:
-1. **Detect system Python**: Uses it directly if found.
-2. **Auto-download if no Python**: Downloads a portable Python 3.11 (~30MB) via [uv](https://github.com/astral-sh/uv) — no manual Python installation needed.
-3. Create a Python virtual environment named `ppocr_v6_env`.
-4. Install `paddleocr` + `onnxruntime` dependencies (~200MB).
+1. **Detect an existing virtual environment**: If `ppocr_v6_env` already exists with a compatible Python version (3.10 - 3.13), dependencies are upgraded in place.
+2. **Detect system Python**: Used directly if the version is within 3.10 - 3.13.
+3. **Auto-download when incompatible or missing**: If system Python is 3.9 or below / 3.14 or above (some paddleocr dependencies such as PyYAML lack prebuilt wheels on those versions and source builds fail), or no Python is installed, a portable Python 3.11 (~30MB) is downloaded via [uv](https://github.com/astral-sh/uv) to rebuild the virtual environment — **nothing needs to be installed manually**.
+4. Create a Python virtual environment named `ppocr_v6_env`.
+5. Install `paddleocr` + `onnxruntime` dependencies (~200MB).
 
 Installation takes approximately 1-5 minutes (depending on network speed; first run without Python adds ~30MB).
 
-> Beginners just need to double-click `install.bat` and wait — no command-line interaction required.
+> Beginners just need to double-click `install.bat` and wait — no command-line interaction required. An old incompatible virtual environment is automatically backed up as `ppocr_v6_env_backup`; delete it manually once the new one works.
 
 > **GPU Acceleration** (Optional, recommended for NVIDIA GPU users):
 >
@@ -82,18 +84,20 @@ Installation takes approximately 1-5 minutes (depending on network speed; first 
 >
 > | Component | Requirement | Notes |
 > |------|------|------|
-> | **NVIDIA GPU** | GTX 10 series or later | GTX 1050+, RTX 20/30/40/50 series, etc. GPUs before GTX 10 (e.g., GTX 9xx/7xx) do not support modern CUDA/cuDNN |
+> | **NVIDIA GPU** | GTX 10 series or later | GTX 1050+, RTX 20/30/40 series, etc. (**RTX 50 series: see dedicated section below**). GPUs before GTX 10 (e.g., GTX 9xx/7xx) do not support modern CUDA/cuDNN |
 > | **NVIDIA GPU Driver** | **R525 or higher** (Windows) | Outdated drivers are the most common cause of GPU not working! [Driver Download](https://www.nvidia.com/Download/index.aspx) |
 > | CUDA Runtime 12.x | Auto-installed | Installed via pip `nvidia-cuda-runtime-cu12` by `install_gpu.bat`; **no manual CUDA Toolkit install needed** |
 > | cuDNN 9.x | Auto-installed | Installed via pip `nvidia-cudnn-cu12` by `install_gpu.bat`; **no manual cuDNN download needed** |
-> | onnxruntime-gpu | Auto-installed | Installed by `install_gpu.bat`; includes CUDA Execution Provider |
+> | onnxruntime-gpu | Auto-installed | Installed by `install_gpu.bat` (pinned to the CUDA 12 build, <1.27); includes CUDA Execution Provider |
 >
 > **Important**: `install_gpu.bat` automatically installs CUDA Runtime and cuDNN runtime libraries via pip (~1.6GB). **No manual NVIDIA CUDA Toolkit or cuDNN installation required.** Just ensure your GPU driver is up-to-date (R525+).
 >
 > Double-click `install_gpu.bat`. The script will automatically:
-> 1. Uninstall any conflicting CPU version of `onnxruntime`
-> 2. Install `onnxruntime-gpu` + CUDA Runtime + cuDNN (~1.6GB)
-> 3. Verify that CUDAExecutionProvider is available
+> 1. Uninstall any conflicting CPU version of `onnxruntime` and CUDA 13 runtime packages
+> 2. Install `onnxruntime-gpu` (CUDA 12 build) + CUDA Runtime + cuDNN (~1.6GB)
+> 3. Verify that CUDAExecutionProvider is available (by directly loading the ORT CUDA provider DLL, validating the full dependency chain)
+>
+> **When an RTX 50 series GPU is detected, the script automatically delegates to `install_gpu_rtx50.bat`** (see dedicated section below) — no manual selection needed.
 >
 > After installation, check "Enable GPU Acceleration" in the Umi-OCR plugin settings.
 >
@@ -131,7 +135,7 @@ Installation takes approximately 1-5 minutes (depending on network speed; first 
 >
 > After installation, check "Enable GPU Acceleration" in the Umi-OCR plugin settings. The plugin auto-detects the installed backend: **CUDA first → then DirectML → fallback to CPU if none**. After startup, you can confirm it took effect via the log line `[ppocr_v6] engine=onnxruntime, gpu_backend=directml`.
 >
-> **Note**: `onnxruntime-directml` is mutually exclusive with `onnxruntime` / `onnxruntime-gpu`; only one can be installed in the same virtual environment. If you previously ran `install.bat` or `install_gpu.bat`, run `ppocr_v6_env\Scripts\pip uninstall -y onnxruntime onnxruntime-gpu` first, then run `install_directml.bat`. NVIDIA users should still prefer `install_gpu.bat` (CUDA is faster than DirectML).
+> **Note**: `onnxruntime-directml` is mutually exclusive with `onnxruntime` / `onnxruntime-gpu`; only one can be installed in the same virtual environment. `install_directml.bat` uninstalls conflicting packages automatically before installing (since v2.1, no manual uninstall needed). NVIDIA users should still prefer `install_gpu.bat` (CUDA is faster than DirectML).
 >
 > **About Vulkan**: ONNX Runtime does not officially provide a Vulkan Execution Provider, so this plugin cannot support Vulkan like the ncnn engine. However, on Windows, **DirectML already achieves the same cross-vendor GPU acceleration goal as Vulkan** — both support NVIDIA/AMD/Intel Arc/integrated GPUs. The difference is that Vulkan is cross-platform (Linux/macOS) and zero-dependency, while DirectML is Windows-only and requires installing `onnxruntime-directml`. This plugin is Windows-only, so DirectML is sufficient.
 
@@ -324,27 +328,49 @@ A: This is usually because the CUDA/cuDNN runtime libraries are not loaded corre
 
 3. **Re-run `install_gpu.bat`**: The script automatically uninstalls conflicting CPU `onnxruntime`, reinstalls `onnxruntime-gpu` + CUDA Runtime + cuDNN, and verifies CUDAExecutionProvider availability.
 
-4. **Check onnxruntime version**: Run `pip list | findstr onnxruntime` in `ppocr_v6_env` to confirm `onnxruntime-gpu` (not `onnxruntime`) is installed. The two are mutually exclusive; having both causes conflicts. To manually fix:
+4. **Check onnxruntime version**: Run `pip list | findstr onnxruntime` in `ppocr_v6_env` to confirm `onnxruntime-gpu` (not `onnxruntime`) is installed. The two are mutually exclusive; having both causes conflicts. To manually fix (RTX 50 series uses `>=1.28`, other GPUs use `<1.27`):
    ```
    ppocr_v6_env\Scripts\pip uninstall -y onnxruntime onnxruntime-gpu
-   ppocr_v6_env\Scripts\pip install "onnxruntime-gpu[cuda,cudnn]"
+   ppocr_v6_env\Scripts\pip install "onnxruntime-gpu[cuda,cudnn]>=1.23,<1.27"
    ```
 
 5. **Verify CUDA availability**:
    ```
    ppocr_v6_env\Scripts\python -c "import onnxruntime as ort; print(ort.get_available_providers())"
    ```
-   The output should include `CUDAExecutionProvider`. If not, CUDA/cuDNN DLLs failed to load — update your driver and retry.
+   The output should include `CUDAExecutionProvider`. Note: this only proves the EP is compiled into onnxruntime — **it does NOT prove the CUDA DLLs can actually load** (ORT silently falls back to CPU). Continue with `verify_gpu.py` for the definitive check.
 
-6. **Check CUDA/cuDNN DLL paths** (v1.8 fix): Different versions of nvidia pip packages may have different directory structures (e.g., `cudart64_12.dll` might be in `nvidia\cu13\bin\x86_64\` instead of `nvidia\cuda_runtime\bin\`, `cublas64_12.dll` might be in `nvidia\cublas\` root instead of `nvidia\cublas\bin\`). v1.8 changed to recursive scanning of all subdirectories under `nvidia\` to auto-adapt to these differences. If you still encounter issues, run `verify_gpu.py` to check DLL loading:
+6. **Definitive verification + diagnostics**: Run `verify_gpu.py`:
    ```
    ppocr_v6_env\Scripts\python verify_gpu.py
    ```
-   The output shows `[OK]` / `[FAIL]` status for each critical DLL, helping you identify missing DLLs.
+   It directly loads the ORT CUDA provider DLL (CUDA major-version agnostic, works with both 12 and 13), validating the entire cudart/cublas/cudnn dependency chain, and lists the DLLs found. Exit code 0 = GPU available; on failure it reports the missing DLL groups and fix suggestions.
+   - Different versions of nvidia pip packages may have different directory structures (e.g., `cudart64_12.dll` might be in `nvidia\cu13\bin\x86_64\` instead of `nvidia\cuda_runtime\bin\`, `cublas64_12.dll` might be in `nvidia\cublas\` root). v1.8 changed to recursive scanning of all subdirectories under `nvidia\` to auto-adapt to these differences.
+   - Since v2.1, the script no longer hardcodes filenames like `cudart64_12.dll` (the CUDA 13 DLL is named `cudart64_13.dll`, which would cause false failures); it uses `cudart64_*.dll` wildcard matching and validates by loading the provider DLL directly.
+
+7. **RTX 50 series specifics**: See "RTX 50 series GPU not working?" below — RTX 50 must use the CUDA 13 build (1.27+); the plain `install_gpu.bat` (CUDA 12 build) silently falls back to CPU.
 
 > **Note**: Even when GPU is working properly, OCR model GPU utilization may be low (1-10%) because OCR inference is relatively light computation, with most time spent on CPU-side image pre/post-processing. This is normal — GPU acceleration shows up as reduced total time, not high GPU utilization.
 
 > **GPU Compatibility**: CUDA acceleration is only supported on NVIDIA GPUs from the GTX 10 series onwards. GPUs before GTX 10 (e.g., GTX 9xx, 7xx) do not support modern CUDA/cuDNN; please use `install_directml.bat` (DirectML supports any DX12 GPU) or CPU mode.
+
+### Q: RTX 50 series GPU not working? (issue #15)
+A: RTX 50 series (Blackwell, compute capability 12.0) **must use the CUDA 13 build of onnxruntime-gpu (1.27+)**. The older CUDA 12.8 build (<=1.26) does not include sm_120 kernels, and the CUDA EP silently falls back to CPU (symptom: `install_gpu.bat` reports success and the GPU is present, but no speedup). Fix:
+
+1. Run `install_gpu_rtx50.bat` (running `install_gpu.bat` also auto-delegates upon detecting RTX 50)
+2. Ensure the NVIDIA driver is **R580+** (CUDA 13 runtime requirement)
+3. The virtual environment needs Python 3.11+ — if it is 3.10, the script automatically rebuilds it with portable Python 3.12 via uv
+
+Also, if the old `verify_gpu.py` reported "CUDA unavailable" while the GPU was actually working: the old script hardcoded the `cudart64_12.dll` filename, but in a CUDA 13 environment the DLL is named `cudart64_13.dll` — a false negative (one of the root causes of issue #15). v2.1 switched to wildcard matching + loading the provider DLL directly, making it version-agnostic.
+
+### Q: "Python version not supported" or PyYAML build failure during installation? (issue #14)
+A: Some paddleocr dependencies (e.g., PyYAML) have no prebuilt wheels for Python 3.9- / 3.14+, so pip falls back to a source build which fails. Since v2.1, `install.bat` has built-in version gating:
+
+- **System Python within 3.10 - 3.13**: Used directly, identical to the old behavior
+- **System Python 3.9 or below / 3.14 or above / not installed / a Microsoft Store stub**: Automatically downloads a portable Python 3.11 (~30MB) via [uv](https://github.com/astral-sh/uv) to create the virtual environment — **nothing needs to be installed manually**
+- **Existing virtual environment with an incompatible Python** (e.g., created with Python 3.14 by an older script): Automatically backed up as `ppocr_v6_env_backup`, then rebuilt with portable 3.11
+
+If the uv download fails, the script retries 3 times and automatically uses system proxy settings; only if it still fails does it prompt for a manual Python 3.10-3.13 installation.
 
 ### Q: Can I use GPU acceleration without an NVIDIA GPU?
 A: Yes. Run `install_directml.bat` to install the DirectML backend, which supports Intel Arc (including Intel Core Ultra integrated graphics), AMD, and any DirectX 12 GPU. Check "Enable GPU Acceleration" in the plugin settings and the plugin will auto-select the DirectML backend.
@@ -457,6 +483,22 @@ To use "Fast" mode, you must download the PP-OCRv5 mobile_rec model:
 ---
 
 ## Changelog
+
+### v2.1
+
+- **Added Python version gating; completely fixes the Python 3.14 installation failure** (issue #14: with system Python 3.14, `install.bat` failed because PyYAML has no prebuilt wheel and the source build failed):
+  - **Root cause**: PyYAML and other packages in the paddleocr dependency chain have no prebuilt wheels for Python 3.14 yet, so pip falls back to a source build (requires MSVC compiler) which fails; 3.9 and below are likewise unsupported by paddleocr 3.7.0.
+  - **Fix**: `install.bat` now restricts Python to **3.10 - 3.13**. System Python within the range is used directly; otherwise (not installed, Microsoft Store stub, or out of range), a portable Python 3.11 is auto-downloaded via [uv](https://github.com/astral-sh/uv) to rebuild the virtual environment — **keeping it out-of-the-box, no manual Python installation at any point**. The uv download retries 3 times with automatic system-proxy detection; incompatible old virtual environments are backed up as `ppocr_v6_env_backup`.
+  - `install_gpu.bat` / `install_gpu_rtx50.bat` / `install_directml.bat` add the same venv version gate, guiding users to re-run `install.bat` when incompatible.
+- **Added RTX 50 series (Blackwell sm_120) GPU support** (issue #15):
+  - **Root cause**: onnxruntime-gpu <=1.26 on PyPI is the CUDA 12.8 build, which **does not include sm_120 kernels** — the CUDA EP silently falls back to CPU on RTX 50; 1.27+ switched to the CUDA 13 build which includes sm_120 (onnxruntime#29711).
+  - **New `install_gpu_rtx50.bat`**: installs `onnxruntime-gpu >=1.28` (CUDA 13 build) + cu13-series runtimes; requires driver R580+ and Python 3.11+ (a 3.10 venv is auto-rebuilt with portable 3.12 via uv).
+  - **`install_gpu.bat` auto-routing**: scans the compute capability of all GPUs via `nvidia-smi` (any >= 12.0 counts as Blackwell in multi-GPU setups, or GPU name contains "RTX 50") and auto-delegates to `install_gpu_rtx50.bat`; the standard path pins `onnxruntime-gpu <1.27` (CUDA 12 build, compatible with older R525+ drivers) and cleans up leftover CUDA 13 packages.
+- **Rewrote `verify_gpu.py`, fixing the CUDA 13 DLL false-negative** (issue #15, second root cause: the old script hardcoded `cudart64_12.dll`, but the CUDA 13 DLL is named `cudart64_13.dll`, causing "GPU actually works but verification fails"):
+  - DLL diagnostics now use `cudart64_*.dll` wildcard matching — CUDA major-version agnostic (12/13 and future versions).
+  - **The definitive check now loads `onnxruntime_providers_cuda.dll` directly**: the Windows loader resolves the whole cudart/cublas/cudnn dependency chain; if loading succeeds, the CUDA EP can be created and will not silently fall back — far more reliable than `get_available_providers()` (which only reflects the compiled-in EP list).
+  - Added Blackwell detection with version-matching hints: RTX 50 + ORT <1.27 warns about missing sm_120 kernels and points to `install_gpu_rtx50.bat`.
+- **`install_directml.bat` improvements**: auto-uninstalls conflicting `onnxruntime` / `onnxruntime-gpu` and NVIDIA runtime packages before installing (previously manual); unified venv check (run `install.bat` first); fixed garbled Chinese text.
 
 ### v2.0
 

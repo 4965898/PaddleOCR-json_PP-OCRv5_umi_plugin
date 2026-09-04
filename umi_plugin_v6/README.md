@@ -1,4 +1,4 @@
-# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v2.0
+# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v2.1
 
 基于 [PaddleOCR 3.7.0](https://github.com/PaddlePaddle/PaddleOCR) + [ONNX Runtime](https://onnxruntime.ai/) 的 Umi-OCR 插件，使用最新的 **PP-OCRv6** 模型。
 
@@ -20,7 +20,7 @@
 ## 环境要求
 
 - **Umi-OCR**：Paddle v2.1.5 及以上
-- **Python**：**无需预装**（install.bat 会自动下载便携 Python）；如已安装 Python 3.10+ 则直接使用
+- **Python**：**无需预装**（install.bat 会自动下载便携 Python）；如已安装 Python **3.10 - 3.13** 则直接使用，**3.9 及以下或 3.14 及以上**会自动改用便携版（见下方说明）
 - **操作系统**：Windows 10/11 x64
 - **磁盘空间**：约 500MB（虚拟环境）+ 模型文件（默认 small 约 30MB，可选 medium 约 130MB，表格识别约 131MB，按需下载）
 
@@ -36,7 +36,8 @@ Umi-OCR/
     └── plugins/
         └── umi_plugin_v6/            ← 复制到这里
             ├── install.bat            ← CPU 版安装脚本
-            ├── install_gpu.bat        ← NVIDIA GPU 加速安装脚本
+            ├── install_gpu.bat        ← NVIDIA GPU 加速安装脚本（非 RTX 50 系）
+            ├── install_gpu_rtx50.bat  ← NVIDIA RTX 50 系专用（CUDA 13）
             ├── install_directml.bat   ← DirectML (Intel Arc/AMD) 安装脚本
             ├── PaddleOCR-json.bat     ← 启动脚本
             ├── ppocr_v6_server.py     ← OCR + 表格识别服务端
@@ -56,14 +57,15 @@ Umi-OCR/
 ### 第 2 步：安装环境（开箱即用，无需预装 Python）
 
 双击运行 `install.bat`，脚本会自动完成全部安装：
-1. **检测系统 Python**：有则直接使用
-2. **无 Python 时自动下载**：通过 [uv](https://github.com/astral-sh/uv) 自动下载便携 Python 3.11（约 30MB），无需手动安装
-3. 创建虚拟环境 `ppocr_v6_env`
-4. 安装 `paddleocr` + `onnxruntime` 依赖（约 200MB）
+1. **检测已有虚拟环境**：`ppocr_v6_env` 已存在且版本兼容（Python 3.10 - 3.13）则直接升级依赖
+2. **检测系统 Python**：版本在 3.10 - 3.13 范围内则直接使用
+3. **版本不兼容或无 Python 时自动下载**：系统 Python 为 3.9 及以下 / 3.14 及以上（paddleocr 部分依赖如 PyYAML 在这些版本缺少预编译 wheel，源码构建会失败），或系统无 Python 时，通过 [uv](https://github.com/astral-sh/uv) 自动下载便携 Python 3.11（约 30MB）重建虚拟环境，**无需手动安装任何东西**
+4. 创建虚拟环境 `ppocr_v6_env`
+5. 安装 `paddleocr` + `onnxruntime` 依赖（约 200MB）
 
 安装约需 1-5 分钟（取决于网速；无 Python 时首次多下 30MB）。
 
-> 新手只需双击 `install.bat` 等待完成即可，全程无需命令行操作。
+> 新手只需双击 `install.bat` 等待完成即可，全程无需命令行操作。旧版本不兼容的虚拟环境会自动备份为 `ppocr_v6_env_backup`，确认新版可用后可手动删除。
 
 > **GPU 加速**（可选，推荐 NVIDIA 显卡用户使用）：
 >
@@ -71,18 +73,20 @@ Umi-OCR/
 >
 > | 组件 | 要求 | 说明 |
 > |------|------|------|
-> | **NVIDIA 显卡** | GTX 10 系列及之后 | GTX 1050+、RTX 20/30/40/50 系列等。GTX 10 之前（如 GTX 9xx/7xx）不支持现代 CUDA/cuDNN |
+> | **NVIDIA 显卡** | GTX 10 系列及之后 | GTX 1050+、RTX 20/30/40 系列等（**RTX 50 系见下方专节**）。GTX 10 之前（如 GTX 9xx/7xx）不支持现代 CUDA/cuDNN |
 > | **NVIDIA 显卡驱动** | **R525 或更高**（Windows） | 驱动版本过低是 GPU 不生效的最常见原因！[驱动下载](https://www.nvidia.com/Download/index.aspx) |
 > | CUDA Runtime 12.x | 自动安装 | 由 `install_gpu.bat` 通过 pip 安装 `nvidia-cuda-runtime-cu12`，**无需手动安装 CUDA Toolkit** |
 > | cuDNN 9.x | 自动安装 | 由 `install_gpu.bat` 通过 pip 安装 `nvidia-cudnn-cu12`，**无需手动下载 cuDNN** |
-> | onnxruntime-gpu | 自动安装 | 由 `install_gpu.bat` 安装，包含 CUDA Execution Provider |
+> | onnxruntime-gpu | 自动安装 | 由 `install_gpu.bat` 安装（钉住 <1.27 的 CUDA 12 构建），包含 CUDA Execution Provider |
 >
 > **重要**：`install_gpu.bat` 会自动通过 pip 安装 CUDA Runtime 和 cuDNN 运行库（约 1.6GB），**无需手动安装 NVIDIA CUDA Toolkit 或 cuDNN**。只需确保显卡驱动为最新版本（R525+）。
 >
 > 双击运行 `install_gpu.bat`，脚本会自动：
-> 1. 卸载可能冲突的 CPU 版 `onnxruntime`
-> 2. 安装 `onnxruntime-gpu` + CUDA Runtime + cuDNN（约 1.6GB）
-> 3. 验证 CUDAExecutionProvider 是否可用
+> 1. 卸载可能冲突的 CPU 版 `onnxruntime` 及 CUDA 13 运行库包
+> 2. 安装 `onnxruntime-gpu`（CUDA 12 构建）+ CUDA Runtime + cuDNN（约 1.6GB）
+> 3. 验证 CUDAExecutionProvider 是否可用（直接加载 ORT CUDA provider DLL，验证完整依赖链）
+>
+> **检测到 RTX 50 系显卡时会自动转由 `install_gpu_rtx50.bat` 处理**（见下方专节），无需手动选择。
 >
 > 安装完成后，在 Umi-OCR 插件设置中勾选「启用GPU」即可。
 >
@@ -112,6 +116,28 @@ Umi-OCR/
 >
 > 留出的显存给 cuDNN workspace、CUDA context、paddle 缓存等使用，避免显存吃满导致 bad allocation 或 CUDA error 999。每页识别后还会自动清理 GPU 缓存，防止多页 PDF 显存碎片累积。
 
+> **RTX 50 系显卡（Blackwell sm_120）专用路径（v2.1 新增）**：
+>
+> RTX 50 系（5060/5070/5080/5090 等）采用 Blackwell 架构（compute capability 12.0），**必须使用 onnxruntime-gpu 的 CUDA 13 构建（1.27+）**——旧版 CUDA 12.8 构建（<=1.26）不含 sm_120 内核，CUDA EP 会静默回退 CPU。
+>
+> | 组件 | 要求 | 说明 |
+> |------|------|------|
+> | **NVIDIA 显卡驱动** | **R580 或更高**（Windows） | CUDA 13 运行库要求，[驱动下载](https://www.nvidia.com/Download/index.aspx) |
+> | onnxruntime-gpu | **1.27+（CUDA 13 构建）** | 包含 sm_120 内核，由 `install_gpu_rtx50.bat` 自动安装 |
+> | CUDA Runtime 13.x / cuDNN 9.x | 自动安装 | 通过 pip 自动安装 `nvidia-cuda-runtime` 等 cu13 系列包，**无需手动安装** |
+> | Python | **3.11 - 3.13** | onnxruntime-gpu CUDA 13 构建的要求；若当前虚拟环境是 3.10，脚本会通过 uv 自动重建为便携 Python 3.12 |
+>
+> 双击运行 `install_gpu_rtx50.bat`（或直接运行 `install_gpu.bat`，检测到 RTX 50 系会自动转接），脚本会自动：
+> 1. 检查驱动版本 >= R580，过低则给出更新指引
+> 2. 虚拟环境为 Python 3.10 时，自动通过 uv 重建为便携 Python 3.12（旧环境备份为 `ppocr_v6_env_backup`）
+> 3. 卸载可能冲突的 `onnxruntime` / `onnxruntime-gpu`（CUDA 12 构建）及 CUDA 12 运行库包
+> 4. 安装 `onnxruntime-gpu >=1.28`（CUDA 13 构建，含 sm_120 内核）+ CUDA 13 Runtime + cuDNN（约 2GB）
+> 5. 验证 CUDAExecutionProvider 是否可用（直接加载 ORT CUDA provider DLL）
+>
+> **注意**：Blackwell 上部分 Conv 算子可能打印 `running in Fallback mode` 警告——它们仍通过通用 cuDNN 代码路径在 GPU 上运行，不影响识别结果。
+>
+> 如何确认自己是不是 RTX 50 系：`nvidia-smi --query-gpu=name --format=csv,noheader` 输出含 "RTX 50" 即是；或看设备管理器中的显卡型号。
+
 > **DirectML 加速**（v1.6 新增，适用于 Intel Arc / AMD 等非 NVIDIA 显卡）：
 >
 > 没有 NVIDIA 显卡也能用 GPU 加速。DirectML 是微软的 DirectX 12 推理后端，支持 **Intel Arc 核显/独显**（如 Intel Core Ultra 5/7 125H/155H 自带 Arc Graphics）、**AMD 显卡**，以及任意 DirectX 12 GPU。
@@ -120,7 +146,7 @@ Umi-OCR/
 >
 > 安装完成后，在 Umi-OCR 插件设置中勾选「启用GPU加速」即可。插件自动识别已安装的后端：**CUDA 优先 → 其次 DirectML → 无则降级 CPU**。启动后可在日志中看到 `[ppocr_v6] engine=onnxruntime, gpu_backend=directml` 确认生效。
 >
-> **注意**：`onnxruntime-directml` 与 `onnxruntime` / `onnxruntime-gpu` 互斥，同一虚拟环境只能装一个。若之前跑过 `install.bat` 或 `install_gpu.bat`，请先 `ppocr_v6_env\Scripts\pip uninstall -y onnxruntime onnxruntime-gpu`，再运行 `install_directml.bat`。NVIDIA 用户仍推荐 `install_gpu.bat`（CUDA 比 DirectML 更快）。
+> **注意**：`onnxruntime-directml` 与 `onnxruntime` / `onnxruntime-gpu` 互斥，同一虚拟环境只能装一个。`install_directml.bat` 会先自动卸载冲突包再安装（v2.1 起无需手动卸载）。NVIDIA 用户仍推荐 `install_gpu.bat`（CUDA 比 DirectML 更快）。
 >
 > **关于 Vulkan**：ONNX Runtime 官方未提供 Vulkan Execution Provider，因此本插件无法像 ncnn 引擎那样支持 Vulkan。但在 Windows 上，**DirectML 已等价实现 Vulkan 的跨厂商 GPU 加速目标**——两者都支持 N卡/A卡/Intel Arc/核显，区别仅在于 Vulkan 跨平台（Linux/macOS）且零依赖，而 DirectML 仅限 Windows 且需装 onnxruntime-directml。本插件为 Windows-only，DirectML 已足够覆盖。
 
@@ -313,27 +339,49 @@ A: 这通常是因为 CUDA/cuDNN 运行库未正确加载，ORT 静默回退到�
 
 3. **重新运行 `install_gpu.bat`**：脚本会自动卸载冲突的 CPU 版 `onnxruntime`，重新安装 `onnxruntime-gpu` + CUDA Runtime + cuDNN，并验证 CUDAExecutionProvider 是否可用。
 
-4. **检查 onnxruntime 版本**：在 `ppocr_v6_env` 中运行 `pip list | findstr onnxruntime`，确认安装的是 `onnxruntime-gpu`（而非 `onnxruntime`）。两者互斥，同时安装会导致冲突。如需手动修复：
+4. **检查 onnxruntime 版本**：在 `ppocr_v6_env` 中运行 `pip list | findstr onnxruntime`，确认安装的是 `onnxruntime-gpu`（而非 `onnxruntime`）。两者互斥，同时安装会导致冲突。如需手动修复（RTX 50 系用 `>=1.28`，其他显卡用 `<1.27`）：
    ```
    ppocr_v6_env\Scripts\pip uninstall -y onnxruntime onnxruntime-gpu
-   ppocr_v6_env\Scripts\pip install "onnxruntime-gpu[cuda,cudnn]"
+   ppocr_v6_env\Scripts\pip install "onnxruntime-gpu[cuda,cudnn]>=1.23,<1.27"
    ```
 
 5. **验证 CUDA 可用性**：
    ```
    ppocr_v6_env\Scripts\python -c "import onnxruntime as ort; print(ort.get_available_providers())"
    ```
-   输出应包含 `CUDAExecutionProvider`。如果没有，说明 CUDA/cuDNN DLL 加载失败，请更新驱动后重试。
+   输出应包含 `CUDAExecutionProvider`。注意：这只说明 EP 编译进了 onnxruntime，**不代表 CUDA DLL 能真正加载**（ORT 会静默回退 CPU），请继续用 `verify_gpu.py` 做终极验证。
 
-6. **检查 CUDA/cuDNN DLL 路径**（v1.8 修复）：不同版本的 nvidia pip 包目录结构可能不同（如 `cudart64_12.dll` 可能在 `nvidia\cu13\bin\x86_64\` 而非 `nvidia\cuda_runtime\bin\`，`cublas64_12.dll` 可能在 `nvidia\cublas\` 根目录而非 `nvidia\cublas\bin\`）。v1.8 已改为递归扫描 `nvidia\` 下所有子目录，能自动适配这些差异。如果仍遇问题，可运行 `verify_gpu.py` 检查 DLL 加载情况：
+6. **终极验证 + 诊断**：运行 `verify_gpu.py`：
    ```
    ppocr_v6_env\Scripts\python verify_gpu.py
    ```
-   输出会显示每个关键 DLL 的 `[OK]` / `[FAIL]` 状态，便于定位缺失的 DLL。
+   它会直接加载 ORT 的 CUDA provider DLL（与 CUDA 大版本无关，12/13 均适用），沿依赖链验证 cudart/cublas/cudnn 是否全部可解析，并列出找到的 DLL 清单。退出码 0 = GPU 可用；失败时会给出缺失的 DLL 组和修复建议。
+   - 不同版本的 nvidia pip 包目录结构可能不同（如 `cudart64_12.dll` 可能在 `nvidia\cu13\bin\x86_64\` 而非 `nvidia\cuda_runtime\bin\`，`cublas64_12.dll` 可能在 `nvidia\cublas\` 根目录）。v1.8 起已递归扫描 `nvidia\` 下所有子目录，自动适配这些差异。
+   - v2.1 起不再硬编码 `cudart64_12.dll` 等文件名（CUDA 13 的 DLL 名是 `cudart64_13.dll`，硬编码会误报失败），改用 `cudart64_*.dll` 通配匹配并直接加载 provider DLL 验证。
+
+7. **RTX 50 系专项**：见下方「RTX 50 系显卡 GPU 不生效？」——RTX 50 必须用 CUDA 13 构建（1.27+），装了普通 `install_gpu.bat`（CUDA 12 构建）会静默回退 CPU。
 
 > **注意**：即使 GPU 正常工作，OCR 模型的 GPU 利用率也可能较低（1-10%），因为 OCR 推理的计算量相对较小，大部分时间花在 CPU 端的图像预处理和后处理上。这是正常现象——GPU 加速的效果体现在总耗时减少，而非 GPU 占用率高。
 
 > **显卡兼容性**：CUDA 加速仅支持 GTX 10 系列及之后的 NVIDIA 显卡。GTX 10 之前的显卡（如 GTX 9xx、7xx 等）不支持现代 CUDA/cuDNN，请改用 `install_directml.bat`（DirectML，支持任意 DX12 GPU）或 CPU 模式。
+
+### Q: RTX 50 系显卡 GPU 不生效？（issue #15）
+A: RTX 50 系（Blackwell，compute capability 12.0）**必须使用 onnxruntime-gpu 的 CUDA 13 构建（1.27+）**，旧版 CUDA 12.8 构建（<=1.26）不含 sm_120 内核，CUDA EP 会静默回退 CPU（表现：`install_gpu.bat` 显示安装成功、GPU 实际也在工作，但速度无提升）。解决：
+
+1. 运行 `install_gpu_rtx50.bat`（运行 `install_gpu.bat` 检测到 RTX 50 也会自动转接）
+2. 确保 NVIDIA 驱动为 **R580+**（CUDA 13 运行库要求）
+3. 虚拟环境需 Python 3.11+——脚本检测到 3.10 会自动通过 uv 重建为便携 Python 3.12
+
+另外，若之前用旧版 `verify_gpu.py` 验证时报「CUDA 不可用」但实际 GPU 工作正常：旧脚本硬编码了 `cudart64_12.dll` 文件名，而 CUDA 13 环境下 DLL 名为 `cudart64_13.dll`，属误报（issue #15 根因之一）。v2.1 已改为通配匹配 + 直接加载 provider DLL，版本无关。
+
+### Q: 安装时提示 Python 版本不支持 / PyYAML 构建失败？（issue #14）
+A: paddleocr 的部分依赖（如 PyYAML）在 Python 3.9- / 3.14+ 没有预编译 wheel，pip 会尝试源码构建并失败。v2.1 起 `install.bat` 内置版本门控：
+
+- **系统 Python 在 3.10 - 3.13**：直接使用，行为与旧版一致
+- **系统 Python 为 3.9 及以下 / 3.14 及以上 / 未安装 / 是 Microsoft Store 占位符**：自动通过 [uv](https://github.com/astral-sh/uv) 下载便携 Python 3.11（约 30MB）创建虚拟环境，**无需手动安装任何东西**
+- **已有虚拟环境但 Python 版本不兼容**（如用旧版脚本 + Python 3.14 创建过）：自动备份为 `ppocr_v6_env_backup` 后用便携 3.11 重建
+
+uv 下载失败时脚本会重试 3 次并自动使用系统代理设置；仍失败时才提示手动安装 Python 3.10-3.13。
 
 ### Q: 没有 NVIDIA 显卡能用 GPU 加速吗？
 A: 可以。运行 `install_directml.bat` 安装 DirectML 后端，支持 Intel Arc（含 Intel Core Ultra 核显）、AMD、以及任意 DirectX 12 GPU。在插件设置中勾选「启用GPU加速」即可，插件会自动选用 DirectML 后端。
@@ -354,6 +402,22 @@ A: 在 Umi-OCR 的插件设置中切换「模型尺寸」。切换后会重新�
 - [Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) - 免费开源的 OCR 软件
 
 ## 更新日志
+
+### v2.1
+
+- **新增 Python 版本门控，彻底修复 Python 3.14 安装失败**（issue #14：用户系统 Python 3.14 下 `install.bat` 因 PyYAML 无预编译 wheel 源码构建失败）：
+  - **根因**：paddleocr 依赖链中的 PyYAML 等包在 Python 3.14 尚无预编译 wheel，pip 回退源码构建（需 MSVC 编译器）而失败；3.9 及以下同样不被 paddleocr 3.7.0 支持。
+  - **修复**：`install.bat` 将 Python 版本限定在 **3.10 - 3.13**。系统 Python 在范围内则直接使用；不在范围内（含未安装、Microsoft Store 占位符）时自动通过 [uv](https://github.com/astral-sh/uv) 下载便携 Python 3.11 重建虚拟环境——**保持开箱即用，用户全程无需手动安装 Python**。uv 下载带 3 次重试 + 注册表代理自动检测；不兼容的旧虚拟环境自动备份为 `ppocr_v6_env_backup`。
+  - `install_gpu.bat` / `install_gpu_rtx50.bat` / `install_directml.bat` 同步加入 venv 版本门控，版本不符时引导重跑 `install.bat`。
+- **新增 RTX 50 系（Blackwell sm_120）GPU 支持**（issue #15）：
+  - **根因**：PyPI 上 onnxruntime-gpu <=1.26 为 CUDA 12.8 构建，**不含 sm_120 内核**，RTX 50 系上 CUDA EP 静默回退 CPU；1.27+ 改为 CUDA 13 构建并包含 sm_120（onnxruntime#29711）。
+  - **新增 `install_gpu_rtx50.bat`**：安装 `onnxruntime-gpu >=1.28`（CUDA 13 构建）+ cu13 系列运行库；要求驱动 R580+、Python 3.11+（venv 为 3.10 时自动经 uv 重建为便携 3.12）。
+  - **`install_gpu.bat` 自动路由**：通过 `nvidia-smi` 扫描所有 GPU 的 compute capability（多 GPU 场景任一 >= 12.0 即判定 Blackwell，或 GPU 名含 "RTX 50"），检测到 RTX 50 自动转接 `install_gpu_rtx50.bat`；普通显卡路径钉住 `onnxruntime-gpu <1.27`（CUDA 12 构建，兼容 R525+ 旧驱动），并清理 CUDA 13 残留包。
+- **重写 `verify_gpu.py`，修复 CUDA 13 下 DLL 误报**（issue #15 根因之二：旧脚本硬编码 `cudart64_12.dll`，CUDA 13 环境的 DLL 名为 `cudart64_13.dll`，导致「实际 GPU 正常但验证报不可用」）：
+  - DLL 诊断改为 `cudart64_*.dll` 等通配匹配，与 CUDA 大版本无关（12/13 及未来版本均适用）。
+  - **终极判定改为直接加载 `onnxruntime_providers_cuda.dll`**：Windows 加载器沿依赖链自动解析 cudart/cublas/cudnn，加载成功即 CUDA EP 可创建、不会静默回退，比 `get_available_providers()`（只查编译期 EP 列表）可靠得多。
+  - 新增 Blackwell 检测与版本匹配提示：检测到 RTX 50 + ORT <1.27 时警告缺少 sm_120 内核并引导运行 `install_gpu_rtx50.bat`。
+- **`install_directml.bat` 改进**：安装前自动卸载冲突的 `onnxruntime` / `onnxruntime-gpu` 及 NVIDIA 运行库包（原先需手动卸载）；统一 venv 检查逻辑（必须先运行 `install.bat`）；修复中文提示乱码。
 
 ### v2.0
 
