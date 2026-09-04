@@ -1,4 +1,4 @@
-# UmiOCR PP-OCRv6 ONNX Plugin (v2.0)
+# UmiOCR PP-OCRv6 ONNX Plugin (v2.1)
 
 This repository contains two versions of the Umi-OCR PaddleOCR plugin:
 
@@ -22,6 +22,7 @@ A Umi-OCR plugin based on [PaddleOCR 3.7.0](https://github.com/PaddlePaddle/Padd
 - **Two Model Tiers**: Medium (High Accuracy) / Small (Fast), switchable at any time.
 - **Multilingual Recognition**: The PP-OCRv6 recognition model is multilingual, supporting Chinese, English, Japanese, Korean, etc., without needing to switch languages.
 - **Multi-backend GPU Acceleration**: NVIDIA GPUs use CUDA (fastest, ~17x); Intel Arc / AMD or any DirectX 12 GPU uses DirectML. The plugin auto-selects the backend based on installed components.
+- **RTX 50 Series Support (v2.1 New)**: Blackwell (sm_120) GPUs are automatically routed to the dedicated CUDA 13 install script (with sm_120 kernels) — no manual configuration needed.
 - **Adjustable CPU Threads**: Exposes the ONNX Runtime inference thread count. Lowering it significantly reduces memory usage (each thread allocates an independent workspace buffer) without affecting accuracy.
 - **Performance Optimization**: Enables the highest level of ONNX Runtime graph optimization + memory mode to fully utilize multi-core CPUs.
 - **Dynamic GPU VRAM Allocation**: Adaptively allocates the ORT CUDA arena limit based on total GPU VRAM (Small 50% / Medium 65%). For 8GB cards, it stabilizes around 5.8GB, preventing VRAM saturation.

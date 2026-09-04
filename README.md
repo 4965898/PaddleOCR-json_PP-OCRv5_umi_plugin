@@ -1,4 +1,4 @@
-# UmiOCR PP-OCRv6 ONNX Plugin（v2.0）
+# UmiOCR PP-OCRv6 ONNX Plugin（v2.1）
 
 本仓库包含两个版本的 Umi-OCR PaddleOCR 插件：
 
@@ -22,6 +22,7 @@
 - **两档模型**：medium（高精度）/ small（快速），可随时切换
 - **多语言识别**：PP-OCRv6 识别模型为多语言模型，可识别中英日韩等，无需按语言切换
 - **多后端 GPU 加速**：NVIDIA 显卡走 CUDA（最快，约 17 倍）；Intel Arc / AMD 等任意 DirectX 12 显卡走 DirectML；插件按已安装组件自动选择后端
+- **RTX 50 系支持（v2.1 新增）**：Blackwell (sm_120) 显卡自动路由到专用 CUDA 13 安装脚本（含 sm_120 内核），无需手动配置
 - **CPU 线程数可调**：暴露 ONNX Runtime 推理线程数设置，调小可显著降低内存占用（每线程分配独立工作区缓冲区），不影响识别精度
 - **性能优化**：开启 ONNX Runtime 图优化最高级 + 内存模式，充分利用 CPU 多核
 - **GPU 显存动态分配**：按显卡总显存自适应分配 ORT CUDA arena 上限（small 50% / medium 65%），8GB 显卡稳定在 5.8GB，不再吃满显存
