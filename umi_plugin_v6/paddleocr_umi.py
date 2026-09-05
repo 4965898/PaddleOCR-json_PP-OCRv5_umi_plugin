@@ -6,6 +6,7 @@ from .ppocr_pipe import PPOCR_pipe
 import os
 import logging
 import psutil
+import time
 from base64 import b64encode
 
 logger = logging.getLogger("Umi-OCR")
@@ -173,6 +174,10 @@ class Api:
             self.api = None
             return tr("[Error] OCR 初始化失败。配置: {0}; {1}").format(tempConfigs, e)
         self.engineSign = newSign
+        # 将子进程启动期的诊断行（引擎/GPU 后端/回退警告）镜像到 Umi-OCR 主日志，
+        # 用户可直接在 UmiOCR-data/logs 中统一查看（issue #15：此前主日志看不到插件信息）
+        for line in self.api.getDiagLines():
+            logger.info(line.strip())
         return ""
 
     def stop(self):
@@ -226,6 +231,8 @@ class Api:
 
     def __runBefore(self):
         CallFunc.delayStop(self.ramInfo["timerID"])
+        # 逐页计时起点（在 __ramClear 中输出耗时日志）
+        self._t0 = time.time()
 
     def _restart(self):
         self.stop()
@@ -236,6 +243,10 @@ class Api:
             logger.error(tr("重启引擎失败: {0}").format(e))
 
     def __ramClear(self):
+        # 逐页耗时：起点在 __runBefore（覆盖全部 6 个 run 入口；含识别与后处理，
+        # 不含随后的内存重启耗时）。开销为两次 time.time() + 一条日志，可忽略
+        if hasattr(self, "_t0"):
+            logger.info("[ppocr_v6] page time: %.2fs" % (time.time() - self._t0))
         if self.ramInfo["max"] > 0:
             # 子进程可能已崩溃被 exit() 置 None（用户日志中的 AttributeError 来源）
             if self.api is None or getattr(self.api, "ret", None) is None:

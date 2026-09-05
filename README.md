@@ -1,4 +1,4 @@
-# UmiOCR PP-OCRv6 ONNX Plugin（v2.1.1）
+# UmiOCR PP-OCRv6 ONNX Plugin（v2.1.2）
 
 本仓库包含两个版本的 Umi-OCR PaddleOCR 插件：
 
@@ -385,6 +385,13 @@ A: paddleocr 的部分依赖（如 PyYAML）在 Python 3.9- / 3.14+ 没有预编
 
 uv 下载失败时脚本会重试 3 次并自动使用系统代理设置；仍失败时才提示手动安装 Python 3.10-3.13。
 
+### Q: 插件的日志在哪里查看？
+A: v2.1.2 起插件日志直接写入 Umi-OCR 主日志（`UmiOCR-data\logs`），与主程序日志统一管理，无需额外配置：
+- **引擎启动时**：`[ppocr_v6] engine=onnxruntime, gpu_backend=cuda`（推理引擎与 GPU 后端确认）及 GPU 验证失败/回退警告
+- **每次识别**：`[ppocr_v6] page time: 1.23s`（该页总耗时，含推理与后处理）
+
+> v2.1.1 及更早版本：插件诊断信息仅存在于子进程 stderr 内存缓冲，主日志不可见。如需查看更底层的子进程输出（paddlex/paddle 警告、模型下载日志等），可在命令行手动运行 `ppocr_v6_env\Scripts\python.exe ppocr_v6_server.py --use_gpu=true 2> plugin_log.txt`，启动后按 Ctrl+C 退出，日志保存在插件目录的 `plugin_log.txt`。
+
 ### Q: 没有 NVIDIA 显卡能用 GPU 加速吗？
 A: 可以。运行 `install_directml.bat` 安装 DirectML 后端，支持 Intel Arc（含 Intel Core Ultra 核显）、AMD、以及任意 DirectX 12 GPU。在插件设置中勾选「启用GPU加速」即可，插件会自动选用 DirectML 后端。
 
@@ -404,6 +411,16 @@ A: 在 Umi-OCR 的插件设置中切换「模型尺寸」。切换后会重新�
 - [Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) - 免费开源的 OCR 软件
 
 ## 更新日志
+
+### v2.1.2
+
+- **新增日志观测性：插件日志并入 Umi-OCR 主日志，统一管理**（issue #15 用户反馈「主日志中看不到插件的逐页耗时与推理后端信息」）：
+  - 插件 Api 运行于 Umi-OCR 主进程内，现直接通过主程序 logger 输出，自动写入 `UmiOCR-data\logs` 的同一天志文件（同一 JSON 格式、同一套轮转/清理），无需再手动重定向 stderr 排查
+  - **引擎启动时**：`[ppocr_v6] engine=onnxruntime, gpu_backend=cuda` 诊断行与 GPU 验证/回退警告自动镜像到主日志（此前仅存于子进程 stderr 内存缓冲，主日志不可见——v2.1 文档中「查看 Umi-OCR 日志应看到 engine=...」此前实际兑现不了，本次修正）
+  - **每次识别**：输出一行 `[ppocr_v6] page time: X.XXs` 逐页耗时（INFO 级），长 PDF 性能瓶颈定位不再需要手动计时
+  - 诊断行采用粘性捕获（不受 stderr 50 行环形缓冲淘汰影响，首次运行时模型下载进度条也不会刷掉引擎信息）
+  - 性能开销：每页两次 `time.time()` + 一条日志，相对单页 100ms+ 的处理时间可忽略（<0.01%）
+  - FAQ 新增「插件的日志在哪里查看？」
 
 ### v2.1.1
 

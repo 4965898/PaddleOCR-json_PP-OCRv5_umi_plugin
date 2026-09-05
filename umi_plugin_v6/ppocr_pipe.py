@@ -22,6 +22,10 @@ class PPOCR_pipe:
                     cmds += [f"--{key}", str(value)]
         self.ret = None
         self._stderr_lines = []
+        # 粘性保留子进程输出的 [ppocr_v6] 诊断行（不受下方 50 行环形缓冲淘汰影响，
+        # 防止首次运行时模型下载进度条刷掉引擎/GPU 后端信息；供主进程在引擎启动
+        # 完成后镜像到 Umi-OCR 主日志）
+        self._diag_lines = []
         startupinfo = None
         if "win32" in str(sysPlatform).lower():
             startupinfo = subprocess.STARTUPINFO()
@@ -54,11 +58,21 @@ class PPOCR_pipe:
         """持续读取子进程 stderr，防止缓冲区满导致子进程阻塞"""
         try:
             for line in iter(self.ret.stderr.readline, b""):
-                self._stderr_lines.append(line.decode("utf-8", errors="ignore"))
+                text = line.decode("utf-8", errors="ignore")
+                self._stderr_lines.append(text)
                 if len(self._stderr_lines) > 50:
                     self._stderr_lines.pop(0)
+                # 诊断行粘性保留（上限 200 行，防止长期运行无限增长）
+                if "[ppocr_v6]" in text:
+                    self._diag_lines.append(text)
+                    if len(self._diag_lines) > 200:
+                        self._diag_lines.pop(0)
         except Exception:
             pass
+
+    def getDiagLines(self):
+        """返回子进程输出的 [ppocr_v6] 诊断行副本（用于镜像到 Umi-OCR 主日志）"""
+        return list(self._diag_lines)
 
     def runDict(self, writeDict: dict):
         if not self.ret:

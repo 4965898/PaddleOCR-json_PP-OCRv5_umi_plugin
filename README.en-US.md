@@ -1,4 +1,4 @@
-# UmiOCR PP-OCRv6 ONNX Plugin (v2.1.1)
+# UmiOCR PP-OCRv6 ONNX Plugin (v2.1.2)
 
 This repository contains two versions of the Umi-OCR PaddleOCR plugin:
 
@@ -375,6 +375,13 @@ A: Some paddleocr dependencies (e.g., PyYAML) have no prebuilt wheels for Python
 
 If the uv download fails, the script retries 3 times and automatically uses system proxy settings; only if it still fails does it prompt for a manual Python 3.10-3.13 installation.
 
+### Q: Where can I find the plugin's logs?
+A: Since v2.1.2, plugin logs are written directly into the Umi-OCR main log (`UmiOCR-data\logs`) for unified management — no extra configuration needed:
+- **At engine startup**: `[ppocr_v6] engine=onnxruntime, gpu_backend=cuda` (engine and GPU backend confirmation) plus GPU verification failure/fallback warnings
+- **Per recognition**: `[ppocr_v6] page time: 1.23s` (total time for that page, including inference and post-processing)
+
+> v2.1.1 and earlier: the plugin's diagnostic info only lived in the subprocess stderr in-memory buffer and was invisible in the main log. To inspect lower-level subprocess output (paddlex/paddle warnings, model download logs, etc.), run `ppocr_v6_env\Scripts\python.exe ppocr_v6_server.py --use_gpu=true 2> plugin_log.txt` manually in a command prompt, press Ctrl+C after startup, and check `plugin_log.txt` in the plugin directory.
+
 ### Q: Can I use GPU acceleration without an NVIDIA GPU?
 A: Yes. Run `install_directml.bat` to install the DirectML backend, which supports Intel Arc (including Intel Core Ultra integrated graphics), AMD, and any DirectX 12 GPU. Check "Enable GPU Acceleration" in the plugin settings and the plugin will auto-select the DirectML backend.
 
@@ -486,6 +493,16 @@ To use "Fast" mode, you must download the PP-OCRv5 mobile_rec model:
 ---
 
 ## Changelog
+
+### v2.1.2
+
+- **Added logging observability: plugin logs now go into the Umi-OCR main log for unified management** (issue #15 user feedback: "per-page timing and inference backend info are not visible in the main log"):
+  - The plugin Api runs inside the Umi-OCR main process and now logs through the main program's logger — output is written to the same log files under `UmiOCR-data\logs` (same JSON format, same rotation/cleanup). No more manual stderr redirection for troubleshooting.
+  - **At engine startup**: the `[ppocr_v6] engine=onnxruntime, gpu_backend=cuda` diagnostic line and GPU verification/fallback warnings are automatically mirrored into the main log (previously they only lived in the subprocess stderr in-memory buffer, invisible in the main log — the v2.1 doc statement "check the Umi-OCR log for engine=..." could not actually be satisfied; now fixed).
+  - **Per recognition**: one `[ppocr_v6] page time: X.XXs` line (INFO level) — locating long-PDF performance bottlenecks no longer requires manual timing.
+  - Diagnostic lines use sticky capture (immune to the 50-line stderr ring-buffer eviction; model-download progress bars on first run cannot flush away engine info).
+  - Performance overhead: two `time.time()` calls plus one log line per page — negligible (<0.01%) relative to the 100ms+ per-page processing time.
+  - FAQ gains "Where can I find the plugin's logs?"
 
 ### v2.1.1
 
