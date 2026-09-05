@@ -154,6 +154,8 @@ Installation takes approximately 1-5 minutes (depending on network speed; first 
 > ```
 > If many warnings persist after upgrading, it is an upstream cuDNN/onnxruntime maturity gap for Blackwell that the plugin cannot work around — keep an eye on future cuDNN/onnxruntime-gpu releases.
 >
+> **Measured reference** (issue #15, RTX 5090 + small model): ~**1.0s/page** with cuDNN 9.25.1.1 + ORT 1.29.0 (was 1.7s/page before the cuDNN upgrade, ~40% improvement) — upstream coverage is still improving; future runtime upgrades should bring further gains.
+>
 > How to check whether you have an RTX 50 series GPU: run `nvidia-smi --query-gpu=name --format=csv,noheader` — if the output contains "RTX 50", use this path.
 
 > **DirectML Acceleration** (Added v1.6, for Intel Arc / AMD and other non-NVIDIA GPUs):

@@ -143,6 +143,8 @@ Umi-OCR/
 > ```
 > 若升级后仍大量存在，属 cuDNN/onnxruntime 对 Blackwell 支持尚未成熟，插件侧无法绕过，只能等待上游后续版本。
 >
+> **实测参考**（issue #15，RTX 5090 + small 模型）：cuDNN 9.25.1.1 + ORT 1.29.0 下约 **1.0 秒/页**（升级 cuDNN 前为 1.7 秒/页，改善约 40%）——上游覆盖仍在完善中，后续升级运行库可继续获得改善。
+>
 > 如何确认自己是不是 RTX 50 系：`nvidia-smi --query-gpu=name --format=csv,noheader` 输出含 "RTX 50" 即是；或看设备管理器中的显卡型号。
 
 > **DirectML 加速**（v1.6 新增，适用于 Intel Arc / AMD 等非 NVIDIA 显卡）：
