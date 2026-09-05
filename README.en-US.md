@@ -130,6 +130,32 @@ Installation takes approximately 1-5 minutes (depending on network speed; first 
 >
 > The remaining VRAM is reserved for cuDNN workspace, CUDA context, paddle cache, etc., to avoid "bad allocation" or CUDA error 999. GPU cache is also cleared after each page to prevent VRAM fragmentation in multi-page PDFs.
 
+> **RTX 50 Series GPUs (Blackwell sm_120) Dedicated Path (New in v2.1)**:
+>
+> RTX 50 series (5060/5070/5080/5090, etc.) use the Blackwell architecture (compute capability 12.0) and **must use the CUDA 13 build of onnxruntime-gpu (1.27+)** — the older CUDA 12.8 build (<=1.26) does not include sm_120 kernels, and the CUDA EP silently falls back to CPU.
+>
+> | Component | Requirement | Notes |
+> |------|------|------|
+> | **NVIDIA GPU Driver** | **R580 or higher** (Windows) | Required by the CUDA 13 runtime; [Driver Download](https://www.nvidia.com/Download/index.aspx) |
+> | onnxruntime-gpu | **1.27+ (CUDA 13 build)** | Includes sm_120 kernels; installed automatically by `install_gpu_rtx50.bat` |
+> | CUDA Runtime 13.x / cuDNN 9.x | Auto-installed | pip-installed `nvidia-cuda-runtime` and other cu13-series packages; **no manual installation needed** |
+> | Python | **3.11 - 3.13** | Required by the CUDA 13 build of onnxruntime-gpu; if the current virtual environment is 3.10, the script rebuilds it with portable Python 3.12 via uv |
+>
+> Double-click `install_gpu_rtx50.bat` (or just run `install_gpu.bat` — it auto-delegates upon detecting an RTX 50 series GPU). The script will automatically:
+> 1. Check the driver version >= R580 and guide you to update if it is too old
+> 2. Rebuild the virtual environment with portable Python 3.12 via uv when it is Python 3.10 (old environment backed up as `ppocr_v6_env_backup`)
+> 3. Uninstall conflicting `onnxruntime` / `onnxruntime-gpu` (CUDA 12 build) and CUDA 12 runtime packages
+> 4. Install `onnxruntime-gpu >=1.28` (CUDA 13 build, with sm_120 kernels) + CUDA 13 Runtime + cuDNN (~2GB)
+> 5. Verify that CUDAExecutionProvider is available (by directly loading the ORT CUDA provider DLL)
+>
+> **Note**: Blackwell (sm_120) is a very new architecture; some Conv ops may print `running in Fallback mode` warnings and take a slow fallback path — **recognition results are unaffected, but speed can drop noticeably** (a 5090 user measured ~1.7s/page instead of the normal ~0.1-0.3s/page due to this, issue #15). If you see many such warnings with slow inference, first upgrade the runtimes:
+> ```
+> ppocr_v6_env\Scripts\pip install -U "onnxruntime-gpu[cuda,cudnn]"
+> ```
+> Recent cuDNN 9.x releases progressively add Blackwell convolution kernels, and the warnings usually decrease or disappear after upgrading. If many warnings persist after upgrading, it is an upstream onnxruntime maturity gap for Blackwell — keep an eye on future onnxruntime-gpu releases.
+>
+> How to check whether you have an RTX 50 series GPU: run `nvidia-smi --query-gpu=name --format=csv,noheader` — if the output contains "RTX 50", use this path.
+
 > **DirectML Acceleration** (Added v1.6, for Intel Arc / AMD and other non-NVIDIA GPUs):
 >
 > GPU acceleration is available even without an NVIDIA GPU. DirectML is Microsoft's DirectX 12 inference backend, supporting **Intel Arc integrated/discrete GPUs** (e.g., the Arc Graphics built into Intel Core Ultra 5/7 125H/155H), **AMD GPUs**, and any DirectX 12 GPU.

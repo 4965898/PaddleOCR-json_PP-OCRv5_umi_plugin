@@ -130,6 +130,32 @@ Umi-OCR/
 >
 > 留出的显存给 cuDNN workspace、CUDA context、paddle 缓存等使用，避免显存吃满导致 bad allocation 或 CUDA error 999。每页识别后还会自动清理 GPU 缓存，防止多页 PDF 显存碎片累积。
 
+> **RTX 50 系显卡（Blackwell sm_120）专用路径（v2.1 新增）**：
+>
+> RTX 50 系（5060/5070/5080/5090 等）采用 Blackwell 架构（compute capability 12.0），**必须使用 onnxruntime-gpu 的 CUDA 13 构建（1.27+）**——旧版 CUDA 12.8 构建（<=1.26）不含 sm_120 内核，CUDA EP 会静默回退 CPU。
+>
+> | 组件 | 要求 | 说明 |
+> |------|------|------|
+> | **NVIDIA 显卡驱动** | **R580 或更高**（Windows） | CUDA 13 运行库要求，[驱动下载](https://www.nvidia.com/Download/index.aspx) |
+> | onnxruntime-gpu | **1.27+（CUDA 13 构建）** | 包含 sm_120 内核，由 `install_gpu_rtx50.bat` 自动安装 |
+> | CUDA Runtime 13.x / cuDNN 9.x | 自动安装 | 通过 pip 自动安装 `nvidia-cuda-runtime` 等 cu13 系列包，**无需手动安装** |
+> | Python | **3.11 - 3.13** | onnxruntime-gpu CUDA 13 构建的要求；若当前虚拟环境是 3.10，脚本会通过 uv 自动重建为便携 Python 3.12 |
+>
+> 双击运行 `install_gpu_rtx50.bat`（或直接运行 `install_gpu.bat`，检测到 RTX 50 系会自动转接），脚本会自动：
+> 1. 检查驱动版本 >= R580，过低则给出更新指引
+> 2. 虚拟环境为 Python 3.10 时，自动通过 uv 重建为便携 Python 3.12（旧环境备份为 `ppocr_v6_env_backup`）
+> 3. 卸载可能冲突的 `onnxruntime` / `onnxruntime-gpu`（CUDA 12 构建）及 CUDA 12 运行库包
+> 4. 安装 `onnxruntime-gpu >=1.28`（CUDA 13 构建，含 sm_120 内核）+ CUDA 13 Runtime + cuDNN（约 2GB）
+> 5. 验证 CUDAExecutionProvider 是否可用（直接加载 ORT CUDA provider DLL）
+>
+> **注意**：Blackwell (sm_120) 架构较新，部分 Conv 算子可能打印 `running in Fallback mode` 警告并走慢速回退路径——**识别结果不受影响，但速度可能明显下降**（实测有 5090 用户因此从正常约 0.1~0.3 秒/页降至约 1.7 秒/页，issue #15）。若大量出现该警告且速度偏慢，先升级运行库：
+> ```
+> ppocr_v6_env\Scripts\pip install -U "onnxruntime-gpu[cuda,cudnn]"
+> ```
+> 近期 cuDNN 9.x 版本逐步完善了 Blackwell 卷积内核，升级后警告通常减少/消失。若升级后仍大量存在，属 onnxruntime 上游对 Blackwell 的支持尚未成熟，可关注后续 onnxruntime-gpu 新版本。
+>
+> 如何确认自己是不是 RTX 50 系：`nvidia-smi --query-gpu=name --format=csv,noheader` 输出含 "RTX 50" 即是；或看设备管理器中的显卡型号。
+
 > **DirectML 加速**（v1.6 新增，适用于 Intel Arc / AMD 等非 NVIDIA 显卡）：
 >
 > 没有 NVIDIA 显卡也能用 GPU 加速。DirectML 是微软的 DirectX 12 推理后端，支持 **Intel Arc 核显/独显**（如 Intel Core Ultra 5/7 125H/155H 自带 Arc Graphics）、**AMD 显卡**，以及任意 DirectX 12 GPU。
