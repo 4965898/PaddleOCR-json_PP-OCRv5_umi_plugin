@@ -148,11 +148,11 @@ Umi-OCR/
 > 4. 安装 `onnxruntime-gpu >=1.28`（CUDA 13 构建，含 sm_120 内核）+ CUDA 13 Runtime + cuDNN（约 2GB）
 > 5. 验证 CUDAExecutionProvider 是否可用（直接加载 ORT CUDA provider DLL）
 >
-> **注意**：Blackwell (sm_120) 架构较新，部分 Conv 算子可能打印 `running in Fallback mode` 警告并走慢速回退路径——**识别结果不受影响，但速度可能明显下降**（实测有 5090 用户因此从正常约 0.1~0.3 秒/页降至约 1.7 秒/页，issue #15）。若大量出现该警告且速度偏慢，先升级运行库：
+> **注意**：Blackwell (sm_120) 架构较新，部分 Conv 算子可能打印 `running in Fallback mode` 警告并走慢速回退路径——**识别结果不受影响，但速度可能明显下降**（实测有 5090 用户因此从正常约 0.1~0.3 秒/页降至约 1.7 秒/页，issue #15）。这是 cuDNN 9.x 对 Blackwell 上部分卷积形状尚无优化算法的**已知上游缺口**（算法选择层面，并非缺少 sm_120 内核；社区 sm_120 构建同样存在该警告）。若大量出现该警告且速度偏慢，可尝试升级运行库——新版 cuDNN 可能覆盖更多卷积形状，但不保证消除：
 > ```
 > ppocr_v6_env\Scripts\pip install -U "onnxruntime-gpu[cuda,cudnn]"
 > ```
-> 近期 cuDNN 9.x 版本逐步完善了 Blackwell 卷积内核，升级后警告通常减少/消失。若升级后仍大量存在，属 onnxruntime 上游对 Blackwell 的支持尚未成熟，可关注后续 onnxruntime-gpu 新版本。
+> 若升级后仍大量存在，属 cuDNN/onnxruntime 对 Blackwell 支持尚未成熟，插件侧无法绕过，只能等待上游后续版本。
 >
 > 如何确认自己是不是 RTX 50 系：`nvidia-smi --query-gpu=name --format=csv,noheader` 输出含 "RTX 50" 即是；或看设备管理器中的显卡型号。
 

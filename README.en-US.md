@@ -148,11 +148,11 @@ Installation takes approximately 1-5 minutes (depending on network speed; first 
 > 4. Install `onnxruntime-gpu >=1.28` (CUDA 13 build, with sm_120 kernels) + CUDA 13 Runtime + cuDNN (~2GB)
 > 5. Verify that CUDAExecutionProvider is available (by directly loading the ORT CUDA provider DLL)
 >
-> **Note**: Blackwell (sm_120) is a very new architecture; some Conv ops may print `running in Fallback mode` warnings and take a slow fallback path — **recognition results are unaffected, but speed can drop noticeably** (a 5090 user measured ~1.7s/page instead of the normal ~0.1-0.3s/page due to this, issue #15). If you see many such warnings with slow inference, first upgrade the runtimes:
+> **Note**: Blackwell (sm_120) is a very new architecture; some Conv ops may print `running in Fallback mode` warnings and take a slow fallback path — **recognition results are unaffected, but speed can drop noticeably** (a 5090 user measured ~1.7s/page instead of the normal ~0.1-0.3s/page due to this, issue #15). This is a **known upstream gap**: cuDNN 9.x does not yet have optimized Conv algorithms for certain kernel shapes on Blackwell (an algorithm-selection issue, not missing sm_120 kernels — community sm_120 builds show the same warnings). If you see many such warnings with slow inference, try upgrading the runtimes — newer cuDNN may cover more conv shapes, but this is not guaranteed:
 > ```
 > ppocr_v6_env\Scripts\pip install -U "onnxruntime-gpu[cuda,cudnn]"
 > ```
-> Recent cuDNN 9.x releases progressively add Blackwell convolution kernels, and the warnings usually decrease or disappear after upgrading. If many warnings persist after upgrading, it is an upstream onnxruntime maturity gap for Blackwell — keep an eye on future onnxruntime-gpu releases.
+> If many warnings persist after upgrading, it is an upstream cuDNN/onnxruntime maturity gap for Blackwell that the plugin cannot work around — keep an eye on future cuDNN/onnxruntime-gpu releases.
 >
 > How to check whether you have an RTX 50 series GPU: run `nvidia-smi --query-gpu=name --format=csv,noheader` — if the output contains "RTX 50", use this path.
 
