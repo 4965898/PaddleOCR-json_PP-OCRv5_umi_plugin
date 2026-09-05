@@ -23,14 +23,61 @@ REM ---- RTX 50 (Blackwell sm_120) routing ----
 REM Official onnxruntime-gpu 1.27+ on PyPI is built with CUDA 13 (includes
 REM sm_120 kernels); versions <=1.26 are CUDA 12.8 without sm_120.
 REM Blackwell GPUs MUST use the CUDA 13 build -> install_gpu_rtx50.bat
+REM NOTE: the nvidia-smi command MUST be double-quoted inside in('...'):
+REM unquoted '=' and ',' get converted to spaces by cmd's for /f parser,
+REM which made nvidia-smi fail and its error text get captured (bug in the
+REM first v2.1 release: every GPU was misrouted to the RTX 50 script).
 set "GPU_CCAP="
-for /f "tokens=1 delims=." %%C in ('nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2^>nul') do (
-    if %%C GEQ 12 set "GPU_CCAP=%%C"
+for /f "tokens=1 delims=." %%C in ('"nvidia-smi --query-gpu=compute_cap --format=csv,noheader" 2^>nul') do (
+    2>nul set /a "CCAP_N=%%C" && if %%C GEQ 12 set "GPU_CCAP=%%C"
 )
 if defined GPU_CCAP goto :rtx50
 nvidia-smi --query-gpu=name --format=csv,noheader 2>nul | findstr /i /c:"RTX 50" >nul 2>nul
 if not errorlevel 1 goto :rtx50
 
+REM ---- Keep-CUDA13 check ----
+REM If onnxruntime-gpu 1.27+ (the CUDA 13 build) is ALREADY installed AND the
+REM NVIDIA driver is R580+ (CUDA 13 runtime requirement), keep the existing
+REM CUDA 13 environment instead of downgrading to the CUDA 12 build.
+REM The CUDA 13 build also runs fine on 40/30/20-series GPUs.
+ppocr_v6_env\Scripts\python.exe -c "import sys; import onnxruntime as o; v=tuple(int(x) for x in o.__version__.split('.')[:2]); sys.exit(0 if v>=(1,27) and 'CUDAExecutionProvider' in o.get_available_providers() else 1)" >nul 2>nul
+if errorlevel 1 goto :cuda12_install
+set "DRV_MAJOR=0"
+for /f "tokens=1 delims=." %%D in ('"nvidia-smi --query-gpu=driver_version --format=csv,noheader" 2^>nul') do 2>nul set /a "DRV_MAJOR=%%D"
+if %DRV_MAJOR% LSS 580 goto :cuda12_install
+goto :cuda13_keep
+
+:cuda13_keep
+echo [INFO] onnxruntime-gpu 1.27+ (CUDA 13 build) already installed
+echo        and NVIDIA driver R580+ detected.
+echo        Keeping the existing CUDA 13 environment (no downgrade to CUDA 12).
+echo.
+echo [VERIFY] Verifying GPU support...
+ppocr_v6_env\Scripts\python verify_gpu.py
+if errorlevel 1 goto :cuda13_verify_fail
+echo [OK] CUDA 13 environment verified!
+
+echo.
+echo ========================================
+echo  GPU Setup Complete! (CUDA 13, kept)
+echo ========================================
+echo.
+echo Enable "GPU Acceleration" in Umi-OCR plugin settings.
+echo.
+echo To verify GPU is working, check Umi-OCR logs for:
+echo   [ppocr_v6] engine=onnxruntime, gpu_backend=cuda
+echo.
+echo Please restart Umi-OCR.
+echo.
+pause
+exit /b 0
+
+:cuda13_verify_fail
+echo.
+echo [WARNING] The existing CUDA 13 environment failed verification.
+echo        Falling back to the standard CUDA 12 installation...
+
+:cuda12_install
 REM ================================================
 REM  Standard path: CUDA 12 build (driver R525+)
 REM ================================================

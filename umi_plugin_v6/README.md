@@ -1,4 +1,4 @@
-# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v2.1
+# PaddleOCR PP-OCRv6 Umi-OCR 插件（ONNX Runtime 版）v2.1.1
 
 基于 [PaddleOCR 3.7.0](https://github.com/PaddlePaddle/PaddleOCR) + [ONNX Runtime](https://onnxruntime.ai/) 的 Umi-OCR 插件，使用最新的 **PP-OCRv6** 模型。
 
@@ -86,6 +86,8 @@ Umi-OCR/
 > 1. 卸载可能冲突的 CPU 版 `onnxruntime` 及 CUDA 13 运行库包
 > 2. 安装 `onnxruntime-gpu`（CUDA 12 构建）+ CUDA Runtime + cuDNN（约 1.6GB）
 > 3. 验证 CUDAExecutionProvider 是否可用（直接加载 ORT CUDA provider DLL，验证完整依赖链）
+>
+> 已安装 `onnxruntime-gpu 1.27+`（CUDA 13 构建）且驱动为 R580+ 时，脚本会保留现有 CUDA 13 环境并直接验证，**不再降级重装**（v2.1.1 新增；验证失败自动回退标准 CUDA 12 安装）。
 >
 > **检测到 RTX 50 系显卡时会自动转由 `install_gpu_rtx50.bat` 处理**（见下方专节），无需手动选择。
 >
@@ -403,6 +405,11 @@ A: 在 Umi-OCR 的插件设置中切换「模型尺寸」。切换后会重新�
 - [Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) - 免费开源的 OCR 软件
 
 ## 更新日志
+
+### v2.1.1
+
+- **修复 v2.1 中 `install_gpu.bat` 误路由的严重 bug**：`for /f in('...')` 内的 nvidia-smi 命令未加双引号时，cmd 会把未加引号的 `=` 和 `,` 当作参数分隔符转为空格（`--format=csv,noheader` 被拆散），nvidia-smi 报错且错误文本被 `for /f` 捕获，经字符串比较误判为 compute capability 数值——导致**所有 NVIDIA 显卡**（而非仅 RTX 50 系）都被转接至 `install_gpu_rtx50.bat`。修复：命令整体加双引号 + `set /a` 数值校验（非数值输出不再触发路由）。`install_gpu_rtx50.bat` 的驱动版本检测存在同一问题（错误文本被判定为「驱动足够新」，静默放行旧驱动），同步修复。
+- **新增 Keep-CUDA13 检测**（issue #15 讨论）：已安装 `onnxruntime-gpu >= 1.27`（CUDA 13 构建）且驱动为 R580+ 时，`install_gpu.bat` 保留现有 CUDA 13 环境、跳过降级，直接运行 `verify_gpu.py` 验证；验证失败自动回退标准 CUDA 12 安装。40 系等非 RTX 50 显卡 + 新驱动用户不再被无谓降级。
 
 ### v2.1
 

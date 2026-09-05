@@ -23,7 +23,9 @@ REM ---- NVIDIA driver check: CUDA 13 needs R580+ ----
 nvidia-smi >nul 2>nul
 if errorlevel 1 goto :no_nvidia
 set "DRIVER_MAJOR=0"
-for /f "tokens=1 delims=. " %%D in ('nvidia-smi --query-gpu=driver_version --format=csv,noheader 2^>nul') do set "DRIVER_MAJOR=%%D"
+REM NOTE: the nvidia-smi command MUST be double-quoted inside in('...'):
+REM unquoted '=' and ',' get converted to spaces by cmd's for /f parser.
+for /f "tokens=1 delims=. " %%D in ('"nvidia-smi --query-gpu=driver_version --format=csv,noheader" 2^>nul') do 2>nul set /a "DRIVER_MAJOR=%%D"
 echo [INFO] Detected NVIDIA driver version: %DRIVER_MAJOR%.x
 if %DRIVER_MAJOR% LSS 580 goto :driver_old
 

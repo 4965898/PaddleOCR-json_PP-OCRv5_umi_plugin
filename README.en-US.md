@@ -1,4 +1,4 @@
-# UmiOCR PP-OCRv6 ONNX Plugin (v2.1)
+# UmiOCR PP-OCRv6 ONNX Plugin (v2.1.1)
 
 This repository contains two versions of the Umi-OCR PaddleOCR plugin:
 
@@ -97,6 +97,8 @@ Installation takes approximately 1-5 minutes (depending on network speed; first 
 > 1. Uninstall any conflicting CPU version of `onnxruntime` and CUDA 13 runtime packages
 > 2. Install `onnxruntime-gpu` (CUDA 12 build) + CUDA Runtime + cuDNN (~1.6GB)
 > 3. Verify that CUDAExecutionProvider is available (by directly loading the ORT CUDA provider DLL, validating the full dependency chain)
+>
+> If `onnxruntime-gpu 1.27+` (CUDA 13 build) is already installed and the driver is R580+, the script keeps the existing CUDA 13 environment and just verifies it — **no downgrade reinstall** (new in v2.1.1; falls back to the standard CUDA 12 install if verification fails).
 >
 > **When an RTX 50 series GPU is detected, the script automatically delegates to `install_gpu_rtx50.bat`** (see dedicated section below) — no manual selection needed.
 >
@@ -484,6 +486,11 @@ To use "Fast" mode, you must download the PP-OCRv5 mobile_rec model:
 ---
 
 ## Changelog
+
+### v2.1.1
+
+- **Fixed a critical misrouting bug in `install_gpu.bat` (v2.1)**: inside `for /f in('...')`, cmd treats unquoted `=` and `,` as argument separators and converts them to spaces, which broke the nvidia-smi query (`--format=csv,noheader` got split apart); the error text was then captured by `for /f` and misjudged as a compute-capability value via string comparison — routing **every NVIDIA GPU** (not just RTX 50 series) to `install_gpu_rtx50.bat`. Fix: wrap the command in double quotes + `set /a` numeric validation (non-numeric output no longer triggers routing). The driver-version check in `install_gpu_rtx50.bat` had the same flaw (error text was judged as "driver new enough", silently letting old drivers through) and was fixed as well.
+- **Added Keep-CUDA13 detection** (issue #15 discussion): when `onnxruntime-gpu >= 1.27` (CUDA 13 build) is already installed AND the driver is R580+, `install_gpu.bat` keeps the existing CUDA 13 environment instead of downgrading, verifies it with `verify_gpu.py`, and falls back to the standard CUDA 12 install if verification fails. Non-RTX-50 GPUs (e.g. 40-series) with new drivers are no longer needlessly downgraded.
 
 ### v2.1
 
